@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import logging
 import argparse
 from pathlib import Path
 from pyzsync import (
@@ -19,6 +20,9 @@ def main():
 	compare.add_argument("file", help="Path to the file", nargs=2)
 
 	args = parser.parse_args()
+
+	logging.basicConfig(format="[%(levelno)d] [%(asctime)s.%(msecs)03d] %(message)s   (%(filename)s:%(lineno)d)")
+	logging.getLogger().setLevel(logging.INFO)
 
 	if args.command == "zsyncmake":
 		file = Path(args.file)

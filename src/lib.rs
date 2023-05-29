@@ -3,13 +3,13 @@ use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
 use std::collections::{HashSet, BTreeMap};
 use chrono::prelude::*;
-//use md4::{Md4, Digest};
 use sha1::{Sha1, Digest};
 use pyo3::prelude::*;
 use pyo3::{
 	types::{PyBytes},
 	wrap_pyfunction,
 };
+use log::{info, debug};
 
 mod md4;
 const RSUM_SIZE: usize = 4;
@@ -373,18 +373,15 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 	let mut old_char = 0u8;
 	let rsum_mask = 0xffffffff >> (8 * (RSUM_SIZE as u8 - zsync_file_info.rsum_bytes));
 
-	use std::time::Instant;
-	let mut duration: u128 = 0;
 	let mut rsum_lookups: u64 = 0;
 	let mut checksum_lookups: u64 = 0;
 	let mut checksum_matches: u64 = 0;
 
-	//println!("size: {}, num_blocks: {}", size, num_blocks);
 	while pos < size {
 		let new_percent: u8 = ((pos as f64 / size as f64) * 100.0).ceil() as u8;
 		if new_percent != percent {
 			percent = new_percent;
-			println!("pos: {}/{} ({} %)", pos, zsync_file_info.length, percent);
+			info!("pos: {}/{} ({} %)", pos, zsync_file_info.length, percent);
 		}
 		let add_bytes = zsync_file_info.block_size - buf.len() as u32;
 		while buf.len() < zsync_file_info.block_size as usize {
@@ -409,14 +406,14 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 		let entry = map.get(&rsum_key);
 		rsum_lookups += 1;
 		if entry.is_some() {
-			//println!("Matching rsum");
+			//debug!("Matching rsum");
 			let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8);
 			let checksum = &full_checksum[0..checksum_bytes];
 			let block_infos = entry.unwrap().get(&checksum);
 			checksum_lookups += 1;
 			if block_infos.is_some() {
 				checksum_matches += 1;
-				//println!("Matching md4: {:?}", block_infos);
+				//debug!("Matching md4: {:?}", block_infos);
 				for block_info in block_infos.unwrap() {
 					if ! block_ids_found.contains(&block_info.block_id) {
 						patch_instructions.push(
@@ -430,19 +427,17 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 						block_ids_found.insert(block_info.block_id);
 					}
 				}
-				let start = Instant::now();
 				buf.clear();
-				duration += start.elapsed().as_micros();
 				continue;
 			}
 		}
 		old_char = buf.drain(0..1).next().unwrap();
 	}
 
-	println!("duration: {} ms", duration / 1000);
-	println!("rsum_lookups: {}", rsum_lookups);
-	println!("checksum_lookups: {}", checksum_lookups);
-	println!("checksum_matches: {}", checksum_matches);
+	debug!(
+		"Statistics: rsum_lookups={}, checksum_lookups={}, checksum_matches={}",
+		rsum_lookups, checksum_lookups, checksum_matches
+	);
 
 	let mut start_offset: i64 = -1;
 	let mut end_offset: i64 = -1;
@@ -517,7 +512,7 @@ fn _create_zsync_info(file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::
 		checksum_bytes = checksum_bytes2;
 	}
 
-	println!("block_size: {}, rsum_bytes: {}, checksum_bytes: {}", block_size, rsum_bytes, checksum_bytes);
+	debug!("block_size: {}, rsum_bytes: {}, checksum_bytes: {}", block_size, rsum_bytes, checksum_bytes);
 
 	let (block_infos, sha1_digest) = _calc_block_infos(file_path.as_path(), block_size, rsum_bytes, checksum_bytes)?;
 	let zsync_file_info = ZsyncFileInfo {
@@ -575,13 +570,11 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
 		file.write_all(b"\n")?;
 		for block_info in zsync_file_info.block_info {
 			// Write trailing rsum_bytes of the rsum
-			//println!("write =>> rsum: {:x}", block_info.rsum);
 			let buf: [u8; 4] = [
 				((block_info.rsum >> 24) & 0xff) as u8, (block_info.rsum >> 16 & 0xff) as u8,
 				((block_info.rsum >> 8) & 0xff) as u8, (block_info.rsum & 0xff) as u8
 			];
 			file.write_all(&buf[RSUM_SIZE - (zsync_file_info.rsum_bytes as usize) .. RSUM_SIZE])?;
-			//println!("write =>> buf: {:?}", &buf[RSUM_SIZE - (zsync_file_info.rsum_bytes as usize) .. RSUM_SIZE]);
 
 			// Write leading checksum_bytes of the checksum
 			file.write_all(&block_info.checksum[0 .. (zsync_file_info.checksum_bytes as usize)])?;
@@ -607,7 +600,6 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
 	let mut reader = BufReader::new(file);
 	for line_res in reader.by_ref().lines() {
 		let line = line_res?;
-		//println!("{}", line);
 		if line == "" {
 			break;
 		}
@@ -617,7 +609,7 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
 		if val.is_some() {
 			let value = String::from(val.unwrap().trim());
 			let option = String::from(opt).to_lowercase();
-			//println!("{}={}", option, value);
+			debug!("{}={}", option, value);
 			if option == "zsync" {
 				zsync_file_info.zsync = value;
 			}
@@ -658,16 +650,12 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
 	}
 
 	let block_count: u64 = (zsync_file_info.length + u64::from(zsync_file_info.block_size) - 1) / u64::from(zsync_file_info.block_size);
-	//println!("{:?}", zsync_file_info);
-	//println!("{:?}", block_count);
 	for block_id in 0..block_count {
 		let mut buf = vec![0u8; zsync_file_info.rsum_bytes as usize];
 		reader.read_exact(&mut buf)?;
 		buf.resize(RSUM_SIZE, 0u8);
 		buf.rotate_right(RSUM_SIZE - zsync_file_info.rsum_bytes as usize);
-		//println!("read =>> buf: {:?}", buf);
 		let rsum: u32 = (buf[0] as u32) << 24 | (buf[1] as u32) << 16 | (buf[2] as u32) << 8 | (buf[3] as u32);
-		//println!("read =>> rsum: {:x}", rsum);
 
 		let mut checksum = vec![0u8; zsync_file_info.checksum_bytes as usize];
 		reader.read_exact(&mut checksum)?;
@@ -698,6 +686,8 @@ fn rs_read_zsync_file(zsync_file_path: PathBuf) -> PyResult<ZsyncFileInfo> {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn pyzsync(_py: Python, m: &PyModule) -> PyResult<()> {
+	pyo3_log::init();
+
 	m.add_class::<BlockInfo>()?;
 	m.add_class::<ZsyncFileInfo>()?;
 	m.add_function(wrap_pyfunction!(rs_md4, m)?)?;
