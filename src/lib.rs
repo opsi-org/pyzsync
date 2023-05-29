@@ -690,6 +690,8 @@ fn pyzsync(_py: Python, m: &PyModule) -> PyResult<()> {
 
 	m.add_class::<BlockInfo>()?;
 	m.add_class::<ZsyncFileInfo>()?;
+	m.add_class::<Source>()?;
+	m.add_class::<PatchInstruction>()?;
 	m.add_function(wrap_pyfunction!(rs_md4, m)?)?;
 	m.add_function(wrap_pyfunction!(rs_rsum, m)?)?;
 	m.add_function(wrap_pyfunction!(rs_update_rsum, m)?)?;
