@@ -8,6 +8,7 @@ import hashlib
 from pyzsync.pyzsync import (
 	rs_md4, rs_rsum, rs_update_rsum, rs_calc_block_infos,
 	rs_read_zsync_file, rs_write_zsync_file, rs_create_zsync_file,
+	rs_create_zsync_info,
 	rs_calc_block_size, rs_get_patch_instructions, BlockInfo, ZsyncFileInfo
 )
 """
@@ -73,6 +74,9 @@ def write_zsync_file(zsync_info: ZsyncFileInfo, zsync_file: Path) -> None:
 
 def create_zsync_file(file: Path, zsync_file: Path) -> None:
 	return rs_create_zsync_file(file, zsync_file)
+
+def create_zsync_info(file: Path) -> ZsyncFileInfo:
+	return rs_create_zsync_info(file)
 
 def get_patch_instructions(zsync_info: ZsyncFileInfo, file: Path) -> list[PatchInstruction]:
 	return rs_get_patch_instructions(zsync_info, file)

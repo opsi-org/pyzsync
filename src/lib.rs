@@ -491,8 +491,8 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 
 }
 
-#[pyfunction]
-fn rs_create_zsync_file(file_path: PathBuf, zsync_file_path: PathBuf) -> PyResult<()> {
+
+fn _create_zsync_info(file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::error::Error>> {
 	let metadata = file_path.metadata()?;
 	let size = metadata.len();
 	let mtime: DateTime<Utc> = metadata.modified()?.into();
@@ -529,6 +529,18 @@ fn rs_create_zsync_file(file_path: PathBuf, zsync_file_path: PathBuf) -> PyResul
 		checksum_bytes: checksum_bytes,
 		block_info: block_infos
 	};
+	Ok(zsync_file_info)
+}
+
+#[pyfunction]
+fn rs_create_zsync_info(file_path: PathBuf) -> PyResult<ZsyncFileInfo> {
+	let zsync_file_info = _create_zsync_info(file_path).unwrap();
+	Ok(zsync_file_info)
+}
+
+#[pyfunction]
+fn rs_create_zsync_file(file_path: PathBuf, zsync_file_path: PathBuf) -> PyResult<()> {
+	let zsync_file_info = _create_zsync_info(file_path).unwrap();
 	_write_zsync_file(zsync_file_info, zsync_file_path)?;
 	Ok(())
 }
@@ -686,6 +698,7 @@ fn pyzsync(_py: Python, m: &PyModule) -> PyResult<()> {
 	m.add_function(wrap_pyfunction!(rs_get_patch_instructions, m)?)?;
 	m.add_function(wrap_pyfunction!(rs_read_zsync_file, m)?)?;
 	m.add_function(wrap_pyfunction!(rs_write_zsync_file, m)?)?;
+	m.add_function(wrap_pyfunction!(rs_create_zsync_info, m)?)?;
 	m.add_function(wrap_pyfunction!(rs_create_zsync_file, m)?)?;
 	Ok(())
 }

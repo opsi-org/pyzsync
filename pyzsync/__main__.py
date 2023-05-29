@@ -4,7 +4,7 @@ import sys
 import argparse
 from pathlib import Path
 from pyzsync import (
-	calc_block_size, calc_block_infos, create_zsync_file
+	calc_block_size, calc_block_infos, create_zsync_file, create_zsync_info, get_patch_instructions, Source
 )
 
 
@@ -26,13 +26,13 @@ def main():
 	elif args.command == "compare":
 		file1 = Path(args.file[0])
 		file2 = Path(args.file[1])
-		block_size = max(calc_block_size(file1.stat().st_size), calc_block_size(file2.stat().st_size))
-		block_infos1 = calc_block_infos(file=args.file[0], block_size=block_size, rsum_bytes=0, checksum_bytes=16)
-		block_infos2 = calc_block_infos(file=args.file[1], block_size=block_size, rsum_bytes=0, checksum_bytes=16)
-		hashes1 = [b.checksum for b in block_infos1]
-		hashes2 = [b.checksum for b in block_infos2]
-		hashes_shared = [h for h in hashes1 if h in hashes2]
-		print(f"{file1} shares {len(hashes_shared)}/{len(hashes1)} blocks with {file2} ({len(hashes_shared) / len(hashes1) * 100:.2f}%)")
+		zsync_info = create_zsync_info(file1)
+		instructions = get_patch_instructions(zsync_info, file2)
+		file1_bytes = sum([i.size for i in instructions if i.source == Source.Remote])
+		file2_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+		#print(file1_bytes, file2_bytes, zsync_info.length, file1.stat().st_size, file2.stat().st_size)
+		ratio = file2_bytes * 100 / (file1_bytes + file2_bytes)
+		print(f"{file2} contains {ratio:.2f}% of data to create {file1}")
 	else:
 		parser.print_help()
 
