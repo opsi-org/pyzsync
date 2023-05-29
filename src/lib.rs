@@ -15,13 +15,13 @@ mod md4;
 const RSUM_SIZE: usize = 4;
 const CHECKSUM_SIZE: usize = 16;
 const ZSYNC_VERSION: &str= "0.6.2";
-const BITHASH_BITS: usize = 3;
 
 #[derive(Debug,Clone)]
 #[pyclass]
 struct BlockInfo {
 	block_id: u64,
 	offset: u64,
+	size: u16,
 	rsum: u32,
 	checksum: [u8; CHECKSUM_SIZE]
 }
@@ -32,12 +32,14 @@ impl BlockInfo {
 	fn new(
 		block_id: u64,
 		offset: u64,
+		size: u16,
 		rsum: u32,
 		checksum: [u8; CHECKSUM_SIZE]
 	) -> Self {
 		BlockInfo {
 			block_id: block_id,
 			offset: offset,
+			size: size,
 			rsum: rsum,
 			checksum: checksum
 		}
@@ -49,6 +51,10 @@ impl BlockInfo {
 	#[getter]
 	fn offset(&self) -> PyResult<u64> {
 		Ok(self.offset)
+	}
+	#[getter]
+	fn size(&self) -> PyResult<u16> {
+		Ok(self.size)
 	}
 	#[getter]
 	fn rsum(&self) -> PyResult<u32> {
@@ -311,6 +317,7 @@ fn _calc_block_infos(file_path: &Path, block_size: u16, mut rsum_bytes: u8, mut 
 		let block_info = BlockInfo {
 			block_id: block_id,
 			offset: offset,
+			size: buf_size as u16,
 			checksum: checksum,
 			rsum: rsum
 		};
@@ -329,26 +336,16 @@ fn rs_calc_block_infos(file_path: PathBuf, block_size: u16, rsum_bytes: u8, chec
 #[pyfunction]
 fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf) -> PyResult<Vec<PatchInstruction>> {
 	let checksum_bytes = zsync_file_info.checksum_bytes as usize;
-	let block_num: usize = zsync_file_info.block_info.len();
-
-	// Step down the value of i until we find a good hash size
-	let mut i = 16;
-	while (2 << (i - 1)) > block_num && i > 4 {
-		i -= 1;
-	}
-	let bithash_mask: u32 = (2 << (i + BITHASH_BITS)) - 1;
-	let mut bithash = vec![0u8; (bithash_mask + 1) as usize];
-
 	let mut map = BTreeMap::new();
 	let mut iter = zsync_file_info.block_info.iter();
+	let mut sum_block_size: u64 = 0;
 	while let Some(block_info) = iter.next() {
-		bithash[((block_info.rsum & bithash_mask) >> 3) as usize] |= 1 << (block_info.rsum & 7);
+		sum_block_size += block_info.size as u64;
 		let checksum = &block_info.checksum[0..checksum_bytes];
 		if ! map.contains_key(&block_info.rsum) {
 			let map2 = BTreeMap::new();
 			map.insert(block_info.rsum, map2);
 		}
-		//println!("block_info.rsum: {:x}", block_info.rsum);
 		let map2 = map.get_mut(&block_info.rsum).unwrap();
 		if ! map2.contains_key(&checksum) {
 			let blocks :Vec<&BlockInfo> = Vec::new();
@@ -360,13 +357,17 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 	let file = File::open(file_path)?;
 	let metadata = file.metadata()?;
 	let size = metadata.len();
+
+	if sum_block_size != zsync_file_info.length {
+		panic!("Sum of block sizes {} does not match file info length {}", sum_block_size, zsync_file_info.length);
+	}
+
 	let mut patch_instructions :Vec<PatchInstruction> = Vec::new();
 	let reader = BufReader::new(file);
 	let mut read_it = reader.bytes();
 	let mut buf: Vec<u8> = Vec::with_capacity(zsync_file_info.block_size as usize);
 	let mut pos = 0;
-	let mut pad_bytes: u64 = 0;
-	let mut block_ids_found = HashSet::new();
+	let mut block_ids_found: HashSet<u64> = HashSet::new();
 	let mut percent: u8 = 0;
 	let mut rsum = 0;
 	let mut old_char = 0u8;
@@ -374,12 +375,11 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 
 	use std::time::Instant;
 	let mut duration: u128 = 0;
-	let mut bithash_lookups: u64 = 0;
 	let mut rsum_lookups: u64 = 0;
 	let mut checksum_lookups: u64 = 0;
 	let mut checksum_matches: u64 = 0;
 
-	println!("size: {}, block_num: {}", size, block_num);
+	//println!("size: {}, num_blocks: {}", size, num_blocks);
 	while pos < size {
 		let new_percent: u8 = ((pos as f64 / size as f64) * 100.0).ceil() as u8;
 		if new_percent != percent {
@@ -391,7 +391,6 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 			let _byte = read_it.next();
 			if _byte.is_none() {
 				buf.push(0u8);
-				pad_bytes += 1;
 				continue;
 			}
 			let new_char = _byte.unwrap().unwrap();
@@ -407,52 +406,46 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 		}
 
 		let rsum_key = rsum & rsum_mask;
-		// First look into the bithash (fast negative check)
-		bithash_lookups += 1;
-		//if bithash[((rsum & bithash_mask) >> 3) as usize] & (1 << (rsum & 7)) != 0 {
-			let entry = map.get(&rsum_key);
-			rsum_lookups += 1;
-			//println!("rsum_key: {:x}", rsum_key);
-			if entry.is_some() {
-				//println!("Matching rsum");
-				let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8);
-				let checksum = &full_checksum[0..checksum_bytes];
-				let block_infos = entry.unwrap().get(&checksum);
-				checksum_lookups += 1;
-				if block_infos.is_some() {
-					checksum_matches += 1;
-					//println!("Matching md4: {:?}", block_infos);
-					for block_info in block_infos.unwrap() {
-						let block_size = zsync_file_info.block_size as u64 - pad_bytes;
+		let entry = map.get(&rsum_key);
+		rsum_lookups += 1;
+		if entry.is_some() {
+			//println!("Matching rsum");
+			let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8);
+			let checksum = &full_checksum[0..checksum_bytes];
+			let block_infos = entry.unwrap().get(&checksum);
+			checksum_lookups += 1;
+			if block_infos.is_some() {
+				checksum_matches += 1;
+				//println!("Matching md4: {:?}", block_infos);
+				for block_info in block_infos.unwrap() {
+					if ! block_ids_found.contains(&block_info.block_id) {
 						patch_instructions.push(
 							PatchInstruction {
 								source: Source::Local,
-								source_offset: pos - block_size,
+								source_offset: pos - block_info.size as u64,
 								target_offset: block_info.offset,
-								size: block_size,
+								size: block_info.size as u64,
 							}
 						);
 						block_ids_found.insert(block_info.block_id);
 					}
-					let start = Instant::now();
-					buf.clear();
-					duration += start.elapsed().as_micros();
-					continue;
 				}
+				let start = Instant::now();
+				buf.clear();
+				duration += start.elapsed().as_micros();
+				continue;
 			}
-		//}
+		}
 		old_char = buf.drain(0..1).next().unwrap();
 	}
 
 	println!("duration: {} ms", duration / 1000);
-	println!("bithash_lookups: {}", bithash_lookups);
 	println!("rsum_lookups: {}", rsum_lookups);
 	println!("checksum_lookups: {}", checksum_lookups);
 	println!("checksum_matches: {}", checksum_matches);
 
 	let mut start_offset: i64 = -1;
 	let mut end_offset: i64 = -1;
-	let block_size = zsync_file_info.block_size as i64;
 	let mut iter = zsync_file_info.block_info.iter().peekable();
 	while let Some(block_info) = iter.next() {
 		let is_last = iter.peek().is_none();
@@ -460,13 +453,13 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 			let offset = block_info.offset as i64;
 			if start_offset == -1 {
 				start_offset = offset;
-				end_offset = offset + block_size;
+				end_offset = offset + block_info.size as i64;
 				if !is_last {
 					continue;
 				}
 			}
 			else if end_offset == offset {
-				end_offset = offset + block_size;
+				end_offset = offset + block_info.size as i64;
 				if !is_last {
 					continue;
 				}
@@ -487,6 +480,17 @@ fn rs_get_patch_instructions(zsync_file_info: ZsyncFileInfo, file_path: PathBuf)
 		end_offset = -1;
 	}
 	patch_instructions.sort_by_key(|inst| inst.target_offset);
+
+	let mut pos: u64 = 0;
+	for inst in &patch_instructions {
+		if inst.target_offset != pos {
+			panic!("Gap in instructions: {} <> {}", pos, inst.target_offset);
+		}
+		pos += inst.size as u64;
+	}
+	if pos != zsync_file_info.length {
+		panic!("Sum of instructions sizes {} does not match file info length {}", pos, zsync_file_info.length);
+	}
 	Ok(patch_instructions)
 
 }
@@ -669,9 +673,15 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
 		reader.read_exact(&mut checksum)?;
 		checksum.resize(CHECKSUM_SIZE, 0u8);
 
+		let offset = block_id * (zsync_file_info.block_size as u64);
+		let mut b_size: u16 = zsync_file_info.block_size as u16;
+		if block_id + 1 == block_count {
+			b_size = (zsync_file_info.length - offset) as u16;
+		}
 		let block_info = BlockInfo {
 			block_id: block_id,
-			offset: block_id * u64::from(zsync_file_info.block_size),
+			offset: offset,
+			size: b_size,
 			checksum: checksum.try_into().unwrap(),
 			rsum: rsum
 		};

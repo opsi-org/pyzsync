@@ -81,9 +81,12 @@ def test_calc_block_infos(tmp_path: Path) -> None:
 	test_file = Path("tests/data/test.txt")
 
 	block_info = calc_block_infos(test_file, 2048, 4, 16)
+	assert len(block_info) == 5
+	assert sum([i.size for i in block_info]) == test_file.stat().st_size
 
 	assert block_info[0].block_id == 0
 	assert block_info[0].offset == 0
+	assert block_info[0].size == 2048
 
 	assert block_info[0].checksum == bytes.fromhex("56bd0a0924aafee3def128b5844b3058")
 	assert block_info[0].rsum == 0x8bf6804d
@@ -97,6 +100,8 @@ def test_calc_block_infos(tmp_path: Path) -> None:
 	assert block_info[4].offset == 8192
 	assert block_info[4].checksum == bytes.fromhex("35a0c669ac8c646e70c02bd1ddd90042")
 	assert block_info[4].rsum == 0xb5ba7a78
+	assert block_info[4].size == 817
+
 
 def test_read_zsync_file() -> None:
 	zsync_file = Path("tests/data/test.txt.zsync")
@@ -158,24 +163,28 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 			BlockInfo(
 				block_id=0,
 				offset=0,
+				size=2048,
 				rsum=0x12345678,
 				checksum=bytes.fromhex("11223344556677889900112233445566")
 			),
 			BlockInfo(
 				block_id=1,
 				offset=2048,
+				size=2048,
 				rsum=0x123456,
 				checksum=bytes.fromhex("112233445566778899001122334455aa")
 			),
 			BlockInfo(
 				block_id=2,
 				offset=4096,
+				size=2048,
 				rsum=0x1234,
 				checksum=bytes.fromhex("112233445566778899001122334455bb")
 			),
 			BlockInfo(
 				block_id=3,
 				offset=6144,
+				size=2048,
 				rsum=0x12,
 				checksum=bytes.fromhex("112233445566778899001122334455cc")
 			)
@@ -286,11 +295,11 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
 	"mode, block_size, rsum_bytes, exp_max, exp_mean",
 	(
-		("random", 2048, 1, 65, 40),
+		("random", 2048, 1, 66, 40),
 		("random", 2048, 2, 5, 1.1),
 		("random", 2048, 3, 2, 1.001),
 		("random", 2048, 4, 1, 1.00011),
-		("random", 4096, 1, 65, 40),
+		("random", 4096, 1, 66, 40),
 		("random", 4096, 2, 4, 1.1),
 		("random", 4096, 3, 2, 1.001),
 		("random", 4096, 4, 1, 1),

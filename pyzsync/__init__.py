@@ -85,12 +85,14 @@ def optimize_instructions_for_http(instructions: list[PatchInstruction]) -> list
 	# TODO
 	return instructions
 
-def patch_file(file: Path, instructions: list[PatchInstruction], fetch_function: Callable) -> bytes:
+def patch_file(file: Path, instructions: list[PatchInstruction], fetch_function: Callable, output_file: Path | None = None) -> bytes:
 	"""
 	Returns SHA-1 digest
 	"""
+	if not output_file:
+		output_file = file
 	sha1 = hashlib.new("sha1")
-	tmp_file = file.with_name(f"{file.name}.zsync-tmp")
+	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp")
 	with (
 		open(file, "rb") as lfile,
 		open(tmp_file, "wb") as tfile
@@ -103,6 +105,7 @@ def patch_file(file: Path, instructions: list[PatchInstruction], fetch_function:
 				data = fetch_function(instruction.source_offset, instruction.size)
 			tfile.write(data)
 			sha1.update(data)
-	file.unlink()
-	tmp_file.rename(file)
+	if output_file.exists():
+		output_file.unlink()
+	tmp_file.rename(output_file)
 	return sha1.digest()
