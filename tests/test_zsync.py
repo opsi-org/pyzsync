@@ -14,9 +14,11 @@ from pyzsync import (
 )
 import pytest
 
+
 def test_md4() -> None:
 	block = b"x" * 2048
 	assert md4(block) == bytes.fromhex("f3b20ba5cf00653e13fcf03f85bd0224")
+
 
 def test_rsum() -> None:
 	block = ""
@@ -28,6 +30,7 @@ def test_rsum() -> None:
 	assert hex(rsum(bblock, 3)) == "0xa0efa0"
 	assert hex(rsum(bblock, 2)) == "0xefa0"
 	assert hex(rsum(bblock, 1)) == "0xa0"
+
 
 def test_update_rsum() -> None:
 	block = ""
@@ -46,10 +49,12 @@ def test_update_rsum() -> None:
 		#print(hex(rsum))
 		assert _rsum == new_rsum
 
+
 def test_calc_block_size() -> None:
 	assert calc_block_size(1) == 2048
 	assert calc_block_size(1_000_000_000) == 4096
 	assert calc_block_size(2_000_000_000) == 4096
+
 
 def test_hash_speed(tmp_path: Path):
 	test_file = tmp_path / "local"
@@ -77,7 +82,7 @@ def test_hash_speed(tmp_path: Path):
 	assert md4_time < 5
 
 
-def test_calc_block_infos(tmp_path: Path) -> None:
+def test_calc_block_infos() -> None:
 	test_file = Path("tests/data/test.txt")
 
 	block_info = calc_block_infos(test_file, 2048, 4, 16)
@@ -140,6 +145,14 @@ def test_read_zsync_file() -> None:
 	assert info.block_info[4].checksum == bytes.fromhex("35a0c600000000000000000000000000")
 	assert info.block_info[4].rsum == 0x7a78
 
+
+def test_read_zsync_file_umlauts() -> None:
+	zsync_file = Path("tests/data/äöü.zsync")
+	info = read_zsync_file(zsync_file)
+	assert info.zsync == "0.6.2"
+	assert info.filename == "äöü"
+	assert info.url == "äöü"
+
 @pytest.mark.parametrize(
 	"rsum_bytes",
 	(
@@ -150,9 +163,11 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 	zsync_file = tmp_path / "test.zsync"
 	file_info = ZsyncFileInfo(
 		zsync="0.6.4",
+		producer="pyzsync 1.2.3",
 		filename="test",
 		url="test",
 		sha1=bytes.fromhex("bfb8611ca38c187cea650072898ff4381ed2b465"),
+		sha256=bytes.fromhex("db5a54534ed83189736c93a04b3d5805f84651ceaf323fcc0d06dd773559ddfc"),
 		mtime=datetime.fromisoformat("2023-05-25T18:37:04+00:00"),
 		length=8192,
 		block_size=2048,
@@ -191,17 +206,28 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 		]
 	)
 	write_zsync_file(file_info, zsync_file)
-	#data = zsync_file.read_bytes()
-	#print(data)
 	r_file_info = read_zsync_file(zsync_file)
+
+	assert r_file_info.zsync == file_info.zsync
+	assert r_file_info.producer == file_info.producer
+	assert r_file_info.filename == file_info.filename
 	assert r_file_info.url == file_info.url
+	assert r_file_info.sha1 == file_info.sha1
+	assert r_file_info.sha256 == file_info.sha256
+	assert r_file_info.mtime == file_info.mtime
+	assert r_file_info.length == file_info.length
+	assert r_file_info.block_size == file_info.block_size
+	assert r_file_info.seq_matches == file_info.seq_matches
+	assert r_file_info.rsum_bytes == file_info.rsum_bytes
+	assert r_file_info.checksum_bytes == file_info.checksum_bytes
+
 	assert len(r_file_info.block_info) == 4
-	hashmask = (2 << (rsum_bytes * 8 - 1)) - 1
+	hash_mask = (2 << (rsum_bytes * 8 - 1)) - 1
 	for idx, block_info in enumerate(r_file_info.block_info):
 		#print(block_info.block_id)
 		print(hex(block_info.rsum))
-		print(hex((file_info.block_info[idx].rsum & hashmask)))
-		assert block_info.rsum == file_info.block_info[idx].rsum & hashmask
+		print(hex((file_info.block_info[idx].rsum & hash_mask)))
+		assert block_info.rsum == file_info.block_info[idx].rsum & hash_mask
 
 
 def test_big_zsync_file(tmp_path: Path) -> None:
@@ -252,7 +278,7 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 		start = time.time()
 		create_zsync_file(test_file, zsync_file)
 		duration = time.time() - start
-		assert duration < 5
+		assert duration < 15
 
 def test_create_zsync_file(tmp_path: Path) -> None:
 	zsync_file = tmp_path / "test.txt.zsync"
@@ -265,6 +291,7 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 
 	info = read_zsync_file(zsync_file)
 	assert info.zsync == "0.6.2"
+	assert info.producer == "pyzsync 0.1"
 	assert info.filename == "test.txt"
 	assert info.url == "test.txt"
 	assert info.sha1 == bytes.fromhex(digest)
@@ -420,10 +447,17 @@ def test_patch_file(tmp_path: Path):
 			rfile.seek(offset)
 			return rfile.read(size)
 
-	sha1 = patch_file(local_file, instructions, fetch_function)
+	output_file = tmp_path / "out"
+
+	sha1 = patch_file(local_file, instructions, fetch_function, output_file=output_file, return_hash="sha1")
 	assert zsync_info.sha1 == hashlib.sha1(remote_file.read_bytes()).digest()
-	assert remote_file.read_bytes() == local_file.read_bytes()
+	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha1 == zsync_info.sha1
+
+	sha256 = patch_file(local_file, instructions, fetch_function, output_file=output_file, return_hash="sha256")
+	assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
+	assert remote_file.read_bytes() == output_file.read_bytes()
+	assert sha256 == zsync_info.sha256
 
 	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
 	speedup = local_bytes * 100 / zsync_info.length

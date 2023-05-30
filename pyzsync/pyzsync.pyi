@@ -10,9 +10,11 @@ class BlockInfo:
 
 class ZsyncFileInfo:
 	zsync: str
+	producer: str
 	filename: str
 	url: str
 	sha1: bytes
+	sha256: bytes
 	mtime: datetime
 	length: int
 	block_size: int

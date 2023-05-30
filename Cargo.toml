@@ -16,6 +16,7 @@ sha1 = "0.10.5"
 arrayref = "0.3.6"
 pyo3-log = "0.8.1"
 log = "0.4.18"
+sha2 = "0.10.6"
 
 [features]
 # We must make this feature optional to build binaries such as the profiling crate

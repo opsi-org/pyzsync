@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 import hashlib
 
 from pyzsync.pyzsync import (
@@ -44,13 +44,21 @@ def optimize_instructions_for_http(instructions: list[PatchInstruction]) -> list
 	# TODO
 	return instructions
 
-def patch_file(file: Path, instructions: list[PatchInstruction], fetch_function: Callable, output_file: Path | None = None) -> bytes:
+def patch_file(
+	file: Path,
+	instructions: list[PatchInstruction],
+	fetch_function: Callable, *,
+	output_file: Path | None = None,
+	return_hash: Literal["sha1", "sha256"] | None = "sha1"
+) -> bytes:
 	"""
 	Returns SHA-1 digest
 	"""
 	if not output_file:
 		output_file = file
-	sha1 = hashlib.new("sha1")
+	_hash = None
+	if return_hash:
+		_hash = hashlib.new(return_hash)
 	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp")
 	with (
 		open(file, "rb") as lfile,
@@ -63,8 +71,11 @@ def patch_file(file: Path, instructions: list[PatchInstruction], fetch_function:
 			else:
 				data = fetch_function(instruction.source_offset, instruction.size)
 			tfile.write(data)
-			sha1.update(data)
+			if _hash:
+				_hash.update(data)
 	if output_file.exists():
 		output_file.unlink()
 	tmp_file.rename(output_file)
-	return sha1.digest()
+	if _hash:
+		return _hash.digest()
+	return b""
