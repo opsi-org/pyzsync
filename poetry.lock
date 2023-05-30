@@ -318,6 +318,18 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
 
 [[package]]
+name = "rangehttpserver"
+version = "1.3.3"
+description = "SimpleHTTPServer with support for Range requests"
+category = "dev"
+optional = false
+python-versions = "*"
+files = [
+    {file = "rangehttpserver-1.3.3-py2.py3-none-any.whl", hash = "sha256:d7c17fc0a82b1fd4af5889601d42478db2939eed9e6796322a91d51ede3bb85a"},
+    {file = "rangehttpserver-1.3.3.tar.gz", hash = "sha256:8df6bba60d688f4f349c85ae151cb9e7b83da2c9fd08cf62a3d64ef32e063703"},
+]
+
+[[package]]
 name = "ruff"
 version = "0.0.270"
 description = "An extremely fast Python linter, written in Rust."
@@ -396,4 +408,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "5e41f08d9eb8c9001cb7536302423c53459406a5a0a2cfc6f2b01da1de5d84ea"
+content-hash = "8165108b28187b05f825f4e11a50c55ca9424c9bc77f967ec47c3814dc440038"

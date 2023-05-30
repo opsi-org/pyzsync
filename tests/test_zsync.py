@@ -416,7 +416,7 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	shutil.rmtree(tmp_path)
 
 
-def test_patch_file(tmp_path: Path):
+def test_patch_file_local(tmp_path: Path):
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -472,6 +472,87 @@ def test_patch_file(tmp_path: Path):
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 80
+
+	shutil.rmtree(tmp_path)
+
+
+import socket
+from contextlib import closing, contextmanager
+from http.client import HTTPConnection
+from socketserver import TCPServer
+from threading import Thread
+
+from RangeHTTPServer import RangeRequestHandler
+
+
+@contextmanager
+def http_server(directory: Path):
+	# Select free port
+	with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+		sock.bind(("", 0))
+		sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		port = sock.getsockname()[1]
+
+	class Handler(RangeRequestHandler):
+		def __init__(self, *args, **kwargs):
+			super().__init__(*args, directory=str(directory), **kwargs)
+
+	server = TCPServer(("", port), Handler)
+	thread = Thread(target=server.serve_forever)
+	thread.daemon = True
+	thread.start()
+	try:
+		yield port
+	finally:
+		server.socket.close()
+		thread.join(3)
+
+
+def test_patch_file_http(tmp_path: Path):
+	remote_file = tmp_path / "remote"
+	remote_zsync_file = tmp_path / "remote.zsync"
+	local_file = tmp_path / "local"
+
+	block_count = 10
+	block_size = 2048
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+		for block_id in range(block_count):
+			block_data = randbytes(int(block_size / 2) if block_id == block_count - 1 else block_size)
+			rfile.write(block_data)
+			if block_id in (1, 2, 3, 7):
+				lfile.write(block_data)
+
+	create_zsync_file(remote_file, remote_zsync_file)
+	zsync_info = read_zsync_file(remote_zsync_file)
+	instructions = get_patch_instructions(zsync_info, local_file)
+	# R:0, L:1, L:2, L:3, R:4-6, L:7, R:8-9
+	assert len(instructions) == 7
+	assert instructions[0].source == Source.Remote
+	assert instructions[1].source == Source.Local
+	assert instructions[2].source == Source.Local
+	assert instructions[3].source == Source.Local
+	assert instructions[4].source == Source.Remote
+	assert instructions[5].source == Source.Local
+	assert instructions[6].source == Source.Remote
+
+	with http_server(tmp_path) as port:
+		conn = HTTPConnection("localhost", port)
+
+		def fetch_function(offset: int, size: int) -> bytes:
+			conn.request("GET", "/remote", headers={"Range": f"bytes={offset}-{offset + size - 1}"})
+			response = conn.getresponse()
+			# print(response.status, response.reason)
+			return response.read()
+
+		sha256 = patch_file(local_file, instructions, fetch_function, return_hash="sha256")
+		assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
+		assert remote_file.read_bytes() == local_file.read_bytes()
+		assert sha256 == zsync_info.sha256
+
+	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+	speedup = local_bytes * 100 / zsync_info.length
+	print(f"Speedup: {speedup}%")
+	assert round(speedup) == 42
 
 	shutil.rmtree(tmp_path)
 
