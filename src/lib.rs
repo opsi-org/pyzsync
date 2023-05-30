@@ -1,3 +1,8 @@
+/*
+# Copyright (c) 2023 uib GmbH <info@uib.de>
+# This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
+# License: AGPL-3.0
+*/
 use std::fs::{OpenOptions, File, remove_file};
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};

@@ -280,6 +280,7 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 		duration = time.time() - start
 		assert duration < 15
 
+
 def test_create_zsync_file(tmp_path: Path) -> None:
 	zsync_file = tmp_path / "test.txt.zsync"
 	test_file = Path("tests/data/test.txt")
@@ -318,6 +319,7 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 	assert info.block_info[4].offset == 8192
 	assert info.block_info[4].checksum == bytes.fromhex("35a0c600000000000000000000000000")
 	assert info.block_info[4].rsum == 0x00007a78
+
 
 @pytest.mark.parametrize(
 	"mode, block_size, rsum_bytes, exp_max, exp_mean",
@@ -404,6 +406,7 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	assert h_mean <= exp_mean
 	assert h_max <= exp_max
 
+
 def test_patch_file(tmp_path: Path):
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
@@ -464,6 +467,8 @@ def test_patch_file(tmp_path: Path):
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 80
 
+
+@pytest.mark.targz_available
 def test_patch_tar(tmp_path: Path):
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
@@ -513,6 +518,7 @@ def test_patch_tar(tmp_path: Path):
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 91
 
+
 def test_get_instructions(tmp_path: Path) -> None:
 	# TODO
 	remote_file = tmp_path / "remote"
@@ -551,12 +557,14 @@ def test_get_instructions(tmp_path: Path) -> None:
 	for inst in get_patch_instructions(zsync_info, local_file):
 		print(inst.source, inst.source == Source.Remote)
 
+
 @pytest.mark.parametrize(
 	"file_size",
 	(
 		1_000_000, 100_000_000, 1_000_000_000
 	),
 )
+@pytest.mark.zsyncmake_available
 def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> None:
 	# Test different file sizes which result in different block_sizes, rsum_bytes and checksum_bytes
 	remote_file = tmp_path / "remote"

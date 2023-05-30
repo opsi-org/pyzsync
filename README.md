@@ -10,9 +10,7 @@ poetry run maturin develop --release
 poetry run pytest -vv
 ```
 
+## Build release
 ```
-poetry run maturin build
+poetry run maturin build --release
 ```
-
-## Potential for improvement
-- SHA-1 should be replaced with SHA-256 or SHA-512.
