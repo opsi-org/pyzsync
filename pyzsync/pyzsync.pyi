@@ -2,9 +2,12 @@
 # This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
 # License: AGPL-3.0
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
+from pathlib import Path
 
+@dataclass
 class BlockInfo:
 	block_id: int
 	offset: int
@@ -12,6 +15,7 @@ class BlockInfo:
 	rsum: int
 	checksum: bytes
 
+@dataclass
 class ZsyncFileInfo:
 	zsync: str
 	producer: str
@@ -40,3 +44,14 @@ class PatchInstruction:
 	source_offset: int
 	target_offset: int
 	size: int
+
+def rs_md4(block: bytes, num_bytes: int) -> bytes: ...
+def rs_rsum(block: bytes, num_bytes: int) -> int: ...
+def rs_update_rsum(rsum: int, old_char: int, new_char: int) -> int: ...
+def rs_calc_block_size(file_size: int) -> int: ...
+def rs_calc_block_infos(file: Path, block_size: int, rsum_bytes: int, checksum_bytes: int) -> list[BlockInfo]: ...
+def rs_read_zsync_file(zsync_file: Path) -> ZsyncFileInfo: ...
+def rs_write_zsync_file(zsync_info: ZsyncFileInfo, zsync_file: Path) -> None: ...
+def rs_create_zsync_file(file: Path, zsync_file: Path) -> None: ...
+def rs_create_zsync_info(file: Path) -> ZsyncFileInfo: ...
+def rs_get_patch_instructions(zsync_info: ZsyncFileInfo, file: Path) -> list[PatchInstruction]: ...

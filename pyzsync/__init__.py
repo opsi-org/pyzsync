@@ -64,11 +64,6 @@ def get_patch_instructions(zsync_info: ZsyncFileInfo, file: Path) -> list[PatchI
 	return rs_get_patch_instructions(zsync_info, file)
 
 
-def optimize_instructions_for_http(instructions: list[PatchInstruction]) -> list[PatchInstruction]:
-	# TODO
-	return instructions
-
-
 def patch_file(
 	file: Path,
 	instructions: list[PatchInstruction],

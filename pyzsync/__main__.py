@@ -10,7 +10,7 @@ from pathlib import Path
 from pyzsync import Source, create_zsync_file, create_zsync_info, get_patch_instructions
 
 
-def main():
+def main() -> None:
 	parser = argparse.ArgumentParser()
 	subparsers = parser.add_subparsers(dest="command")
 
