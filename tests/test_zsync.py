@@ -4,15 +4,22 @@
 
 import hashlib
 import shutil
+import socket
 import time
 from collections import Counter
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
+from http.client import HTTPConnection
 from pathlib import Path
 from random import randbytes
+from socketserver import TCPServer
 from statistics import mean
 from subprocess import run
+from threading import Thread
+from typing import Any, Generator
 
 import pytest
+from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
 
 from pyzsync import (
 	BlockInfo,
@@ -72,7 +79,7 @@ def test_calc_block_size() -> None:
 	assert calc_block_size(2_000_000_000) == 4096
 
 
-def test_hash_speed(tmp_path: Path):
+def test_hash_speed(tmp_path: Path) -> None:
 	test_file = tmp_path / "local"
 	file_size = 1_000_000_000
 	block_size = 4096
@@ -418,7 +425,7 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	shutil.rmtree(tmp_path)
 
 
-def test_patch_file_local(tmp_path: Path):
+def test_patch_file_local(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -478,17 +485,8 @@ def test_patch_file_local(tmp_path: Path):
 	shutil.rmtree(tmp_path)
 
 
-import socket
-from contextlib import closing, contextmanager
-from http.client import HTTPConnection
-from socketserver import TCPServer
-from threading import Thread
-
-from RangeHTTPServer import RangeRequestHandler
-
-
 @contextmanager
-def http_server(directory: Path):
+def http_server(directory: Path) -> Generator[int, None, None]:
 	# Select free port
 	with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
 		sock.bind(("", 0))
@@ -496,7 +494,7 @@ def http_server(directory: Path):
 		port = sock.getsockname()[1]
 
 	class Handler(RangeRequestHandler):
-		def __init__(self, *args, **kwargs):
+		def __init__(self, *args: Any, **kwargs: Any) -> None:
 			super().__init__(*args, directory=str(directory), **kwargs)
 
 	server = TCPServer(("", port), Handler)
@@ -512,7 +510,7 @@ def http_server(directory: Path):
 
 @pytest.mark.linux
 @pytest.mark.darwin
-def test_patch_file_http(tmp_path: Path):
+def test_patch_file_http(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -562,7 +560,7 @@ def test_patch_file_http(tmp_path: Path):
 
 
 @pytest.mark.targz_available
-def test_patch_tar(tmp_path: Path):
+def test_patch_tar(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
