@@ -3,6 +3,7 @@
 # License: AGPL-3.0
 
 import hashlib
+import shutil
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -95,6 +96,8 @@ def test_hash_speed(tmp_path: Path):
 	print(block_count, rsum_time, md4_time)
 	assert rsum_time < 3
 	assert md4_time < 15
+
+	shutil.rmtree(tmp_path)
 
 
 def test_calc_block_infos() -> None:
@@ -219,6 +222,8 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 		print(hex((file_info.block_info[idx].rsum & hash_mask)))
 		assert block_info.rsum == file_info.block_info[idx].rsum & hash_mask
 
+	shutil.rmtree(tmp_path)
+
 
 def test_big_zsync_file(tmp_path: Path) -> None:
 	test_file = tmp_path / "test.big"
@@ -270,6 +275,8 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 		duration = time.time() - start
 		assert duration < 15
 
+	shutil.rmtree(tmp_path)
+
 
 def test_create_zsync_file(tmp_path: Path) -> None:
 	zsync_file = tmp_path / "test.small.zsync"
@@ -309,6 +316,8 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 	assert info.block_info[4].offset == 8192
 	assert info.block_info[4].checksum == bytes.fromhex("35a0c600000000000000000000000000")
 	assert info.block_info[4].rsum == 0x00007A78
+
+	shutil.rmtree(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -356,6 +365,8 @@ def test_rsum_collisions(tmp_path: Path, mode: str, block_size: int, rsum_bytes:
 	assert h_mean <= exp_mean
 	assert h_max <= exp_max
 
+	shutil.rmtree(tmp_path)
+
 
 @pytest.mark.parametrize(
 	"mode, block_size, checksum_bytes, exp_max, exp_mean",
@@ -395,6 +406,8 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	print(block_size, checksum_bytes, "is:", h_max, h_mean, "exp:", exp_max, exp_mean)
 	assert h_mean <= exp_mean
 	assert h_max <= exp_max
+
+	shutil.rmtree(tmp_path)
 
 
 def test_patch_file(tmp_path: Path):
@@ -454,6 +467,8 @@ def test_patch_file(tmp_path: Path):
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 80
 
+	shutil.rmtree(tmp_path)
+
 
 @pytest.mark.targz_available
 def test_patch_tar(tmp_path: Path):
@@ -505,6 +520,8 @@ def test_patch_tar(tmp_path: Path):
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) >= 88
 
+	shutil.rmtree(tmp_path)
+
 
 def test_get_instructions(tmp_path: Path) -> None:
 	# TODO
@@ -540,6 +557,8 @@ def test_get_instructions(tmp_path: Path) -> None:
 
 	for inst in get_patch_instructions(zsync_info, local_file):
 		print(inst.source, inst.source == Source.Remote)
+
+	shutil.rmtree(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -602,3 +621,5 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 75
+
+	shutil.rmtree(tmp_path)
