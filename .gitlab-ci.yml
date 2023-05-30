@@ -2,8 +2,7 @@ image: docker.uib.gmbh/opsi/dev/pybuilder:uib-python-3.11
 
 stages:
   - test
-  #- doc
-  #- publish
+  - publish
 
 pytest-darwin:
   stage: test
@@ -92,10 +91,16 @@ pylint-pytest:
         coverage_format: cobertura
         path: coverage.xml
       junit: testreport.xml
-#uibpypi:
-#  stage: publish
-#  script:
-#    - poetry install
-#    - poetry run opsi-dev-tool -l info --uib-pypi-publish
-#  only:
-#    - tags
+
+uibpypi:
+  stage: publish
+  script:
+    - poetry install
+    - poetry run maturin build --release
+    # Needs MATURIN_USERNAME and MATURIN_PASSWORD in env
+    # Using IP address because of:
+    #   http://pypi.uib.gmbh:8080/: Dns Failed: resolve dns name 'pypi.uib.gmbh:8080':
+    #   failed to lookup address information: Name does not resolve
+    - poetry run maturin publish -vv --repository-url http://192.168.100.11:8080
+  only:
+    - tags
