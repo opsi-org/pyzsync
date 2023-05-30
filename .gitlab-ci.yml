@@ -26,7 +26,10 @@ pytest-windows:
   tags:
     - win10-py311-x86
   script:
+    - git config --global -l
     - git config --global core.autocrlf false
+    - git config --global -l
+    - git config -l
     - poetry install
     - poetry run maturin develop --release
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
