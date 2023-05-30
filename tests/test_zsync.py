@@ -83,7 +83,7 @@ def test_hash_speed(tmp_path: Path):
 
 
 def test_calc_block_infos() -> None:
-	test_file = Path("tests/data/test.txt")
+	test_file = Path("tests/data/test.small")
 
 	block_info = calc_block_infos(test_file, 2048, 4, 16)
 	assert len(block_info) == 5
@@ -109,8 +109,8 @@ def test_calc_block_infos() -> None:
 
 
 def test_read_zsync_file() -> None:
-	zsync_file = Path("tests/data/test.txt.zsync")
-	test_file = Path("tests/data/test.txt")
+	zsync_file = Path("tests/data/test.small.zsync")
+	test_file = Path("tests/data/test.small")
 
 	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
 	assert digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
@@ -118,8 +118,8 @@ def test_read_zsync_file() -> None:
 	info = read_zsync_file(zsync_file)
 
 	assert info.zsync == "0.6.2"
-	assert info.filename == "test.txt"
-	assert info.url == "test.txt"
+	assert info.filename == "test.small"
+	assert info.url == "test.small"
 	assert info.sha1 == bytes.fromhex(digest)
 	assert info.mtime == datetime.fromisoformat("2023-05-25T18:37:04+00:00")
 	assert info.length == 9009
@@ -282,8 +282,8 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 
 
 def test_create_zsync_file(tmp_path: Path) -> None:
-	zsync_file = tmp_path / "test.txt.zsync"
-	test_file = Path("tests/data/test.txt")
+	zsync_file = tmp_path / "test.small.zsync"
+	test_file = Path("tests/data/test.small")
 
 	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
 	assert digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
@@ -293,8 +293,8 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 	info = read_zsync_file(zsync_file)
 	assert info.zsync == "0.6.2"
 	assert info.producer == "pyzsync 0.1"
-	assert info.filename == "test.txt"
-	assert info.url == "test.txt"
+	assert info.filename == "test.small"
+	assert info.url == "test.small"
 	assert info.sha1 == bytes.fromhex(digest)
 	assert info.mtime == datetime.fromtimestamp(int(test_file.stat().st_mtime), tz=timezone.utc)
 	assert info.length == 9009
