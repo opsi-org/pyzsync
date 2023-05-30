@@ -48,7 +48,6 @@ pytest-linux:
     - poetry run maturin develop --release
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_linux
-    - poetry run python perftest/packaging-benchmarking.py
   artifacts:
     name: 'pyzsync_test_linux'
     paths:
