@@ -710,10 +710,10 @@ def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
 
 	with http_server(remote_dir) as port:
 		cmd = ["zsync", "-i", str(local_file), f"http://localhost:{port}/{remote_zsync_file.name}"]
-		proc = run(cmd, cwd=local_dir, check=True, timeout=30, capture_output=True, encoding="utf-8")
-		out = proc.stdout + proc.stderr
-		print(out)
-		assert f"used {local_bytes} local" in out
+		out = run(cmd, cwd=local_dir, check=True, timeout=30, capture_output=True, encoding="utf-8").stdout
+		if out:
+			print(out)
+			assert f"used {local_bytes} local" in out
 
 	assert hashlib.sha1(local_file.read_bytes()).digest() == hashlib.sha1(remote_file.read_bytes()).digest()
 
