@@ -2,8 +2,8 @@
 # This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
 # License: AGPL-3.0
 
-from enum import IntEnum
 from datetime import datetime
+from enum import IntEnum
 
 class BlockInfo:
 	block_id: int
@@ -35,6 +35,7 @@ class PatchInstruction:
 	"""
 	Position are zero-indexed & inclusive
 	"""
+
 	source: Source
 	source_offset: int
 	target_offset: int

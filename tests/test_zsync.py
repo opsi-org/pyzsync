@@ -1,18 +1,33 @@
-import time
-from statistics import mean
-from subprocess import run
+# Copyright (c) 2023 uib GmbH <info@uib.de>
+# This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
+# License: AGPL-3.0
+
 import hashlib
-from random import randbytes
+import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from collections import Counter
-from pyzsync import (
-	md4, rsum, update_rsum, calc_block_size, calc_block_infos,
-	read_zsync_file, write_zsync_file, create_zsync_file,
-	get_patch_instructions, patch_file,
-	Source, ZsyncFileInfo, BlockInfo
-)
+from random import randbytes
+from statistics import mean
+from subprocess import run
+
 import pytest
+
+from pyzsync import (
+	BlockInfo,
+	Source,
+	ZsyncFileInfo,
+	calc_block_infos,
+	calc_block_size,
+	create_zsync_file,
+	get_patch_instructions,
+	md4,
+	patch_file,
+	read_zsync_file,
+	rsum,
+	update_rsum,
+	write_zsync_file,
+)
 
 
 def test_md4() -> None:
@@ -46,7 +61,7 @@ def test_update_rsum() -> None:
 		new_char = bblock[-1]
 		new_rsum = rsum(bblock, 4)
 		_rsum = update_rsum(_rsum, old_char, new_char)
-		#print(hex(rsum))
+		# print(hex(rsum))
 		assert _rsum == new_rsum
 
 
@@ -94,17 +109,17 @@ def test_calc_block_infos() -> None:
 	assert block_info[0].size == 2048
 
 	assert block_info[0].checksum == bytes.fromhex("56bd0a0924aafee3def128b5844b3058")
-	assert block_info[0].rsum == 0x8bf6804d
+	assert block_info[0].rsum == 0x8BF6804D
 
 	assert block_info[3].block_id == 3
 	assert block_info[3].offset == 6144
 	assert block_info[3].checksum == bytes.fromhex("709f54a2fcbc61c01177f6426d58a9b5")
-	assert block_info[3].rsum == 0xbcfee5b5
+	assert block_info[3].rsum == 0xBCFEE5B5
 
 	assert block_info[4].block_id == 4
 	assert block_info[4].offset == 8192
 	assert block_info[4].checksum == bytes.fromhex("35a0c669ac8c646e70c02bd1ddd90042")
-	assert block_info[4].rsum == 0xb5ba7a78
+	assert block_info[4].rsum == 0xB5BA7A78
 	assert block_info[4].size == 817
 
 
@@ -133,17 +148,17 @@ def test_read_zsync_file() -> None:
 	assert info.block_info[0].block_id == 0
 	assert info.block_info[0].offset == 0
 	assert info.block_info[0].checksum == bytes.fromhex("56bd0a00000000000000000000000000")
-	assert info.block_info[0].rsum == 0x804d
+	assert info.block_info[0].rsum == 0x804D
 
 	assert info.block_info[3].block_id == 3
 	assert info.block_info[3].offset == 6144
 	assert info.block_info[3].checksum == bytes.fromhex("709f5400000000000000000000000000")
-	assert info.block_info[3].rsum == 0xe5b5
+	assert info.block_info[3].rsum == 0xE5B5
 
 	assert info.block_info[4].block_id == 4
 	assert info.block_info[4].offset == 8192
 	assert info.block_info[4].checksum == bytes.fromhex("35a0c600000000000000000000000000")
-	assert info.block_info[4].rsum == 0x7a78
+	assert info.block_info[4].rsum == 0x7A78
 
 
 def test_read_zsync_file_umlauts() -> None:
@@ -153,11 +168,10 @@ def test_read_zsync_file_umlauts() -> None:
 	assert info.filename == "äöü"
 	assert info.url == "äöü"
 
+
 @pytest.mark.parametrize(
 	"rsum_bytes",
-	(
-		2, 3, 4
-	),
+	(2, 3, 4),
 )
 def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 	zsync_file = tmp_path / "test.zsync"
@@ -175,35 +189,11 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 		rsum_bytes=rsum_bytes,
 		checksum_bytes=3,
 		block_info=[
-			BlockInfo(
-				block_id=0,
-				offset=0,
-				size=2048,
-				rsum=0x12345678,
-				checksum=bytes.fromhex("11223344556677889900112233445566")
-			),
-			BlockInfo(
-				block_id=1,
-				offset=2048,
-				size=2048,
-				rsum=0x123456,
-				checksum=bytes.fromhex("112233445566778899001122334455aa")
-			),
-			BlockInfo(
-				block_id=2,
-				offset=4096,
-				size=2048,
-				rsum=0x1234,
-				checksum=bytes.fromhex("112233445566778899001122334455bb")
-			),
-			BlockInfo(
-				block_id=3,
-				offset=6144,
-				size=2048,
-				rsum=0x12,
-				checksum=bytes.fromhex("112233445566778899001122334455cc")
-			)
-		]
+			BlockInfo(block_id=0, offset=0, size=2048, rsum=0x12345678, checksum=bytes.fromhex("11223344556677889900112233445566")),
+			BlockInfo(block_id=1, offset=2048, size=2048, rsum=0x123456, checksum=bytes.fromhex("112233445566778899001122334455aa")),
+			BlockInfo(block_id=2, offset=4096, size=2048, rsum=0x1234, checksum=bytes.fromhex("112233445566778899001122334455bb")),
+			BlockInfo(block_id=3, offset=6144, size=2048, rsum=0x12, checksum=bytes.fromhex("112233445566778899001122334455cc")),
+		],
 	)
 	write_zsync_file(file_info, zsync_file)
 	r_file_info = read_zsync_file(zsync_file)
@@ -224,7 +214,7 @@ def test_write_zsync_file(tmp_path: Path, rsum_bytes: int) -> None:
 	assert len(r_file_info.block_info) == 4
 	hash_mask = (2 << (rsum_bytes * 8 - 1)) - 1
 	for idx, block_info in enumerate(r_file_info.block_info):
-		#print(block_info.block_id)
+		# print(block_info.block_id)
 		print(hex(block_info.rsum))
 		print(hex((file_info.block_info[idx].rsum & hash_mask)))
 		assert block_info.rsum == file_info.block_info[idx].rsum & hash_mask
@@ -236,7 +226,7 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 	sha1 = hashlib.new("sha1")
 	with open(test_file, "wb") as file:
 		data = ""
-		for char in range(0x0000, 0x9fff):
+		for char in range(0x0000, 0x9FFF):
 			data += chr(char)
 		dbytes = data.encode("utf-8")
 		for _ in range(8_000):
@@ -265,13 +255,13 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 		assert info.block_info[0].block_id == 0
 		assert info.block_info[0].offset == 0
 		assert info.block_info[0].checksum == bytes.fromhex("919f75694e0000000000000000000000")
-		assert info.block_info[0].rsum == 0x9dc2ff
+		assert info.block_info[0].rsum == 0x9DC2FF
 
 		assert info.block_info[10000].checksum == bytes.fromhex("1e84be73a10000000000000000000000")
-		assert info.block_info[10000].rsum == 0xf9aeab
+		assert info.block_info[10000].rsum == 0xF9AEAB
 
 		assert info.block_info[235744].checksum == bytes.fromhex("109328c12e0000000000000000000000")
-		assert info.block_info[235744].rsum == 0xdd4ee3
+		assert info.block_info[235744].rsum == 0xDD4EE3
 
 		# Create zsync file and read again
 		zsync_file = Path(tmp_path / "test.big.zsync")
@@ -308,17 +298,17 @@ def test_create_zsync_file(tmp_path: Path) -> None:
 	assert info.block_info[0].block_id == 0
 	assert info.block_info[0].offset == 0
 	assert info.block_info[0].checksum == bytes.fromhex("56bd0a00000000000000000000000000")
-	assert info.block_info[0].rsum == 0x0000804d
+	assert info.block_info[0].rsum == 0x0000804D
 
 	assert info.block_info[3].block_id == 3
 	assert info.block_info[3].offset == 6144
 	assert info.block_info[3].checksum == bytes.fromhex("709f5400000000000000000000000000")
-	assert info.block_info[3].rsum == 0x0000e5b5
+	assert info.block_info[3].rsum == 0x0000E5B5
 
 	assert info.block_info[4].block_id == 4
 	assert info.block_info[4].offset == 8192
 	assert info.block_info[4].checksum == bytes.fromhex("35a0c600000000000000000000000000")
-	assert info.block_info[4].rsum == 0x00007a78
+	assert info.block_info[4].rsum == 0x00007A78
 
 
 @pytest.mark.parametrize(
@@ -346,9 +336,9 @@ def test_rsum_collisions(tmp_path: Path, mode: str, block_size: int, rsum_bytes:
 	data_file = tmp_path / "data"
 	with open(data_file, "wb") as file:
 		if mode == "random":
-			file.write(randbytes(block_size*10000))
+			file.write(randbytes(block_size * 10000))
 		elif mode == "repeat":
-			for block_id in range(0xff+1):
+			for block_id in range(0xFF + 1):
 				block_data = bytes([block_id]) * block_size
 				file.write(block_data)
 		else:
@@ -361,8 +351,8 @@ def test_rsum_collisions(tmp_path: Path, mode: str, block_size: int, rsum_bytes:
 	h_mean = mean(occurences)
 	h_max = max(occurences)
 	print(block_size, rsum_bytes, "is:", h_max, h_mean, "exp:", exp_max, exp_mean)
-	#for hash in counter.keys():
-	#	print(hash.hex())
+	# for hash in counter.keys():
+	# 	print(hash.hex())
 	assert h_mean <= exp_mean
 	assert h_max <= exp_max
 
@@ -388,9 +378,9 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	data_file = tmp_path / "data"
 	with open(data_file, "wb") as file:
 		if mode == "random":
-			file.write(randbytes(block_size*10000))
+			file.write(randbytes(block_size * 10000))
 		elif mode == "repeat":
-			for block_id in range(0xff+1):
+			for block_id in range(0xFF + 1):
 				block_data = bytes([block_id]) * block_size
 				file.write(block_data)
 		else:
@@ -413,13 +403,10 @@ def test_patch_file(tmp_path: Path):
 	local_file = tmp_path / "local"
 
 	file_size = 100_000_000
-	#file_size = 2048 * 1 + 1
+	# file_size = 2048 * 1 + 1
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
-	with (
-		open(remote_file, "wb") as rfile,
-		open(local_file, "wb") as lfile
-	):
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
 		for block_id in range(block_count):
 			data_size = block_size
 			if block_id == block_count - 1:
@@ -442,8 +429,8 @@ def test_patch_file(tmp_path: Path):
 	# Start sync
 	zsync_info = read_zsync_file(remote_zsync_file)
 	instructions = get_patch_instructions(zsync_info, local_file)
-	#for inst in instructions:
-	#	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
+	# for inst in instructions:
+	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
 	def fetch_function(offset: int, size: int) -> bytes:
 		with open(remote_file, "rb") as rfile:
@@ -502,8 +489,8 @@ def test_patch_tar(tmp_path: Path):
 	# Start sync
 	zsync_info = read_zsync_file(remote_zsync_file)
 	instructions = get_patch_instructions(zsync_info, local_file)
-	#for inst in instructions:
-	#	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
+	# for inst in instructions:
+	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
 	def fetch_function(offset: int, size: int) -> bytes:
 		with open(remote_file, "rb") as rfile:
@@ -525,14 +512,11 @@ def test_get_instructions(tmp_path: Path) -> None:
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
 
-	#file_size = 200_000_000
+	# file_size = 200_000_000
 	file_size = 100_000
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
-	with (
-		open(remote_file, "wb") as rfile,
-		open(local_file, "wb") as lfile
-	):
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
 		for block_id in range(block_count):
 			data_size = block_size
 			if block_id == block_count - 1:
@@ -544,10 +528,10 @@ def test_get_instructions(tmp_path: Path) -> None:
 				lfile.write(block_data)
 			else:
 				lfile.write(b"\0\0\0")
-			#elif block_id % 2 == 0:
-			#	lfile.write(block_data[:-4] + b"\0\0\0\0")
-			#else:
-			#	lfile.write(block_data)
+			# elif block_id % 2 == 0:
+			# 	lfile.write(block_data[:-4] + b"\0\0\0\0")
+			# else:
+			# 	lfile.write(block_data)
 
 	assert remote_file.stat().st_size == file_size
 
@@ -560,9 +544,7 @@ def test_get_instructions(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
 	"file_size",
-	(
-		1_000_000, 100_000_000, 1_000_000_000
-	),
+	(1_000_000, 100_000_000, 1_000_000_000),
 )
 @pytest.mark.zsyncmake_available
 def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> None:
@@ -573,10 +555,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
-	with (
-		open(remote_file, "wb") as rfile,
-		open(local_file, "wb") as lfile
-	):
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
 		for block_id in range(block_count):
 			data_size = block_size
 			if block_id == block_count - 1:
@@ -584,13 +563,12 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 				assert data_size <= block_size
 			block_data = randbytes(data_size)
 			rfile.write(block_data)
-			#lfile.write(block_data)
-			#continue
+			# lfile.write(block_data)
+			# continue
 			if block_id % 4 == 0:
 				lfile.write(b"\0\0\0")
 			else:
 				lfile.write(block_data)
-
 
 	cmd = ["zsyncmake", "-Z", "-o", str(remote_zsync_file.name), str(remote_file)]
 	run(cmd, cwd=tmp_path)
@@ -605,8 +583,8 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 		assert block_info.checksum == block_infos[idx].checksum
 
 	instructions = get_patch_instructions(zsync_info, local_file)
-	#for inst in instructions:
-	#	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
+	# for inst in instructions:
+	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
 	def fetch_function(offset: int, size: int) -> bytes:
 		with open(remote_file, "rb") as rfile:
@@ -615,8 +593,8 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	sha1 = patch_file(local_file, instructions, fetch_function)
 
-	#print(local_file.read_bytes().hex())
-	#print(remote_file.read_bytes().hex())
+	# print(local_file.read_bytes().hex())
+	# print(remote_file.read_bytes().hex())
 
 	assert sha1 == zsync_info.sha1
 

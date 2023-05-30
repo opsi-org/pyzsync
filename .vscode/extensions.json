@@ -1,0 +1,9 @@
+{
+	"recommendations": [
+		"ms-python.python",
+		"ms-python.vscode-pylance",
+		"rust-lang.rust-analyzer",
+		"ryanluker.vscode-coverage-gutters",
+		"streetsidesoftware.code-spell-checker"
+	]
+}

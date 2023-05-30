@@ -2,13 +2,12 @@
 # This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
 # License: AGPL-3.0
 
-import sys
-import logging
 import argparse
+import logging
+import sys
 from pathlib import Path
-from pyzsync import (
-	create_zsync_file, create_zsync_info, get_patch_instructions, Source
-)
+
+from pyzsync import Source, create_zsync_file, create_zsync_info, get_patch_instructions
 
 
 def main():
@@ -41,6 +40,7 @@ def main():
 
 	else:
 		parser.print_help()
+
 
 if __name__ == "__main__":
 	try:

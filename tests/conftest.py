@@ -1,12 +1,10 @@
 # Copyright (c) 2023 uib GmbH <info@uib.de>
 # This code is owned by the uib GmbH, Mainz, Germany (uib.de). All rights reserved.
 # License: AGPL-3.0
-"""
-This file is part of opsi - https://www.opsi.org
-"""
 
 import platform
 from subprocess import check_output
+
 import pytest
 from _pytest.config import Config
 from _pytest.nodes import Item
@@ -34,6 +32,7 @@ try:
 	GZIP_VERSION = check_output(["gzip", "-V"]).decode().split("\n", 1)[0].split()[-1]
 except Exception as err:  # pylint: disable=broad-except
 	GZIP_VERSION = None
+
 
 def pytest_runtest_setup(item: Item) -> None:
 	for marker in item.iter_markers():
