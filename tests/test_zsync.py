@@ -100,8 +100,11 @@ def test_hash_speed(tmp_path: Path):
 	shutil.rmtree(tmp_path)
 
 
-def test_calc_block_infos() -> None:
-	test_file = Path("tests/data/test.small")
+def test_calc_block_infos(tmp_path: Path) -> None:
+	# Ensure correct line endings (git windows)
+	data = Path("tests/data/test.small").read_bytes().replace(b"\r\n", b"\n")
+	test_file = tmp_path / "test.small"
+	test_file.write_bytes(data)
 
 	block_info = calc_block_infos(test_file, 2048, 4, 16)
 	assert len(block_info) == 5
@@ -126,9 +129,12 @@ def test_calc_block_infos() -> None:
 	assert block_info[4].size == 817
 
 
-def test_read_zsync_file() -> None:
+def test_read_zsync_file(tmp_path: Path) -> None:
+	# Ensure correct line endings (git windows)
+	data = Path("tests/data/test.small").read_bytes().replace(b"\r\n", b"\n")
+	test_file = tmp_path / "test.small"
+	test_file.write_bytes(data)
 	zsync_file = Path("tests/data/test.small.zsync")
-	test_file = Path("tests/data/test.small")
 
 	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
 	assert digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
