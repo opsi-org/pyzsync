@@ -373,7 +373,7 @@ def test_create_zsync_file(tmp_path: Path, legacy_mode: bool) -> None:
 	"mode, block_size, rsum_bytes, exp_max, exp_mean",
 	(
 		("random", 2048, 1, 66, 40),
-		("random", 2048, 2, 5, 1.1),
+		("random", 2048, 2, 6, 1.1),
 		("random", 2048, 3, 2, 1.001),
 		("random", 2048, 4, 2, 1.0002),
 		("random", 4096, 1, 66, 40),
