@@ -121,7 +121,7 @@ def test_read_zsync_file() -> None:
 	assert info.filename == "test.small"
 	assert info.url == "test.small"
 	assert info.sha1 == bytes.fromhex(digest)
-	assert info.mtime == datetime.fromisoformat("2023-05-25T18:37:04+00:00")
+	assert info.mtime == datetime.fromisoformat("2023-05-26T10:30:14+00:00")
 	assert info.length == 9009
 	assert info.block_size == 2048
 	assert info.seq_matches == 2
