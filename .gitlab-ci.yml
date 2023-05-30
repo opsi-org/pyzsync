@@ -102,6 +102,7 @@ pylint-pytest:
 #   failed to lookup address information: Name does not resolve
 
 uibpypi-darwin-py310-x64:
+  when: manual
   stage: publish
   tags:
     - catalina-py310-x64
