@@ -46,7 +46,8 @@ pytest-linux:
   stage: test
   script:
     - apt update
-    - apt --yes install tar gzip # need tar an gzip for packaging tests
+    # need tar, gzip, zsnyc and zsyncmake for tests
+    - apt --yes install tar gzip zsync
     - poetry install
     - poetry run maturin develop --release
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests

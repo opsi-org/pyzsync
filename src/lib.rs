@@ -550,7 +550,10 @@ fn rs_get_patch_instructions(
     Ok(patch_instructions)
 }
 
-fn _create_zsync_info(file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::error::Error>> {
+fn _create_zsync_info(
+    file_path: PathBuf,
+    legacy_mode: bool,
+) -> Result<ZsyncFileInfo, Box<dyn std::error::Error>> {
     let metadata = file_path.metadata()?;
     let size = metadata.len();
     let mtime: DateTime<Utc> = metadata.modified()?.into();
@@ -592,11 +595,19 @@ fn _create_zsync_info(file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::
         _calc_block_infos(file_path.as_path(), block_size, rsum_bytes, checksum_bytes)?;
     let zsync_file_info = ZsyncFileInfo {
         zsync: ZSYNC_VERSION.to_string(),
-        producer: format!("{} {}", PRODUCER_NAME, PYZSYNC_VERSION),
+        producer: if legacy_mode {
+            "".to_string()
+        } else {
+            format!("{} {}", PRODUCER_NAME, PYZSYNC_VERSION)
+        },
         filename: file_path.file_name().unwrap().to_str().unwrap().to_string(),
         url: file_path.file_name().unwrap().to_str().unwrap().to_string(),
         sha1: sha1_digest,
-        sha256: sha256_digest,
+        sha256: if legacy_mode {
+            [0u8; 32]
+        } else {
+            sha256_digest
+        },
         mtime: mtime,
         length: size,
         block_size: block_size as u32,
@@ -609,14 +620,18 @@ fn _create_zsync_info(file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::
 }
 
 #[pyfunction]
-fn rs_create_zsync_info(file_path: PathBuf) -> PyResult<ZsyncFileInfo> {
-    let zsync_file_info = _create_zsync_info(file_path).unwrap();
+fn rs_create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> PyResult<ZsyncFileInfo> {
+    let zsync_file_info = _create_zsync_info(file_path, legacy_mode).unwrap();
     Ok(zsync_file_info)
 }
 
 #[pyfunction]
-fn rs_create_zsync_file(file_path: PathBuf, zsync_file_path: PathBuf) -> PyResult<()> {
-    let zsync_file_info = _create_zsync_info(file_path).unwrap();
+fn rs_create_zsync_file(
+    file_path: PathBuf,
+    zsync_file_path: PathBuf,
+    legacy_mode: bool,
+) -> PyResult<()> {
+    let zsync_file_info = _create_zsync_info(file_path, legacy_mode).unwrap();
     _write_zsync_file(zsync_file_info, zsync_file_path)?;
     Ok(())
 }
@@ -638,7 +653,9 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
         .open(zsync_file_path)
         .unwrap();
     file.write_all(format!("zsync: {}\n", zsync_file_info.zsync.trim()).as_bytes())?;
-    file.write_all(format!("Producer: {}\n", zsync_file_info.producer.trim()).as_bytes())?;
+    if zsync_file_info.producer.trim() != "" {
+        file.write_all(format!("Producer: {}\n", zsync_file_info.producer.trim()).as_bytes())?;
+    }
     file.write_all(format!("Filename: {}\n", zsync_file_info.filename.trim()).as_bytes())?;
     file.write_all(format!("MTime: {}\n", zsync_file_info.mtime.to_rfc2822()).as_bytes())?;
     file.write_all(format!("Blocksize: {}\n", zsync_file_info.block_size).as_bytes())?;
@@ -652,7 +669,9 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
     )?;
     file.write_all(format!("URL: {}\n", zsync_file_info.filename.trim()).as_bytes())?;
     file.write_all(format!("SHA-1: {}\n", hex::encode(zsync_file_info.sha1)).as_bytes())?;
-    file.write_all(format!("SHA-256: {}\n", hex::encode(zsync_file_info.sha256)).as_bytes())?;
+    if zsync_file_info.sha256 != [0u8; 32] {
+        file.write_all(format!("SHA-256: {}\n", hex::encode(zsync_file_info.sha256)).as_bytes())?;
+    }
     file.write_all(b"\n")?;
     for block_info in zsync_file_info.block_info {
         // Write trailing rsum_bytes of the rsum

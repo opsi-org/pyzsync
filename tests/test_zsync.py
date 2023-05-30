@@ -10,9 +10,10 @@ from collections import Counter
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from http.client import HTTPConnection
+from http.server import HTTPServer
 from pathlib import Path
 from random import randbytes
-from socketserver import TCPServer
+from socketserver import ThreadingMixIn
 from statistics import mean
 from subprocess import run
 from threading import Thread
@@ -36,6 +37,34 @@ from pyzsync import (
 	update_rsum,
 	write_zsync_file,
 )
+
+
+@contextmanager
+def http_server(directory: Path) -> Generator[int, None, None]:
+	# Select free port
+	with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+		sock.bind(("", 0))
+		sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		port = sock.getsockname()[1]
+
+	class Handler(RangeRequestHandler):
+		def __init__(self, *args: Any, **kwargs: Any) -> None:
+			super().__init__(*args, directory=str(directory), **kwargs)
+
+	class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+		pass
+
+	server = ThreadingHTTPServer(("", port), Handler)
+	thread = Thread(target=server.serve_forever)
+	thread.daemon = True
+	thread.start()
+	try:
+		# Wait for server to start
+		time.sleep(3)
+		yield port
+	finally:
+		server.socket.close()
+		thread.join(3)
 
 
 def test_md4() -> None:
@@ -107,8 +136,7 @@ def test_hash_speed(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-@pytest.mark.linux
-@pytest.mark.darwin
+@pytest.mark.posix
 def test_calc_block_infos(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
 	test_file = Path("tests/data/test.small")
@@ -136,8 +164,7 @@ def test_calc_block_infos(tmp_path: Path) -> None:
 	assert block_info[4].size == 817
 
 
-@pytest.mark.linux
-@pytest.mark.darwin
+@pytest.mark.posix
 def test_read_zsync_file(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
 	test_file = Path("tests/data/test.small")
@@ -253,7 +280,6 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 	digest = sha1.hexdigest()
 	assert digest == "6c1c5f44448f4799298ad7372d6cabcf9c8750fe"
 
-	# zsyncmake test.big  2,96s user 0,24s system 99% cpu 3,206 total
 	zsync_file = Path("tests/data/test.big.zsync")
 
 	for _ in range(2):
@@ -291,23 +317,31 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-@pytest.mark.linux
-@pytest.mark.darwin
-def test_create_zsync_file(tmp_path: Path) -> None:
+@pytest.mark.posix
+@pytest.mark.parametrize(
+	"legacy_mode",
+	(False, True),
+)
+def test_create_zsync_file(tmp_path: Path, legacy_mode: bool) -> None:
 	zsync_file = tmp_path / "test.small.zsync"
 	test_file = Path("tests/data/test.small")
 
-	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
-	assert digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
+	sha1_digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
+	assert sha1_digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
+	sha256_digest = hashlib.sha256(test_file.read_bytes()).hexdigest()
+	assert sha256_digest == "9699e10d36d6b54e74fe3174d1beeb3c21eb2aa30928696ad2ad0072ce66f002"
 
-	create_zsync_file(test_file, zsync_file)
+	create_zsync_file(test_file, zsync_file, legacy_mode=legacy_mode)
 
 	info = read_zsync_file(zsync_file)
 	assert info.zsync == "0.6.2"
-	assert info.producer == "pyzsync 0.1"
+	assert info.producer == "" if legacy_mode else "pyzsync 0.1"
 	assert info.filename == "test.small"
 	assert info.url == "test.small"
-	assert info.sha1 == bytes.fromhex(digest)
+	assert info.sha1 == bytes.fromhex(sha1_digest)
+	assert info.sha256 == bytes.fromhex(
+		"0000000000000000000000000000000000000000000000000000000000000000" if legacy_mode else sha256_digest
+	)
 	assert info.mtime == datetime.fromtimestamp(int(test_file.stat().st_mtime), tz=timezone.utc)
 	assert info.length == 9009
 	assert info.block_size == 2048
@@ -485,31 +519,6 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-@contextmanager
-def http_server(directory: Path) -> Generator[int, None, None]:
-	# Select free port
-	with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-		sock.bind(("", 0))
-		sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		port = sock.getsockname()[1]
-
-	class Handler(RangeRequestHandler):
-		def __init__(self, *args: Any, **kwargs: Any) -> None:
-			super().__init__(*args, directory=str(directory), **kwargs)
-
-	server = TCPServer(("", port), Handler)
-	thread = Thread(target=server.serve_forever)
-	thread.daemon = True
-	thread.start()
-	try:
-		yield port
-	finally:
-		server.socket.close()
-		thread.join(3)
-
-
-@pytest.mark.linux
-@pytest.mark.darwin
 def test_patch_file_http(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
@@ -612,44 +621,6 @@ def test_patch_tar(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-def test_get_instructions(tmp_path: Path) -> None:
-	# TODO
-	remote_file = tmp_path / "remote"
-	remote_zsync_file = tmp_path / "remote.zsync"
-	local_file = tmp_path / "local"
-
-	# file_size = 200_000_000
-	file_size = 100_000
-	block_size = calc_block_size(file_size)
-	block_count = int((file_size + block_size - 1) / block_size)
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
-		for block_id in range(block_count):
-			data_size = block_size
-			if block_id == block_count - 1:
-				data_size = file_size - block_id * block_size
-				assert data_size <= block_size
-			block_data = randbytes(data_size)
-			rfile.write(block_data)
-			if block_id % 2 == 0:
-				lfile.write(block_data)
-			else:
-				lfile.write(b"\0\0\0")
-			# elif block_id % 2 == 0:
-			# 	lfile.write(block_data[:-4] + b"\0\0\0\0")
-			# else:
-			# 	lfile.write(block_data)
-
-	assert remote_file.stat().st_size == file_size
-
-	create_zsync_file(remote_file, remote_zsync_file)
-	zsync_info = read_zsync_file(remote_zsync_file)
-
-	for inst in get_patch_instructions(zsync_info, local_file):
-		print(inst.source, inst.source == Source.Remote)
-
-	shutil.rmtree(tmp_path)
-
-
 @pytest.mark.parametrize(
 	"file_size",
 	(1_000_000, 100_000_000, 1_000_000_000),
@@ -671,8 +642,6 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 				assert data_size <= block_size
 			block_data = randbytes(data_size)
 			rfile.write(block_data)
-			# lfile.write(block_data)
-			# continue
 			if block_id % 4 == 0:
 				lfile.write(b"\0\0\0")
 			else:
@@ -691,8 +660,6 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 		assert block_info.checksum == block_infos[idx].checksum
 
 	instructions = get_patch_instructions(zsync_info, local_file)
-	# for inst in instructions:
-	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
 	def fetch_function(offset: int, size: int) -> bytes:
 		with open(remote_file, "rb") as rfile:
@@ -701,14 +668,52 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	sha1 = patch_file(local_file, instructions, fetch_function)
 
-	# print(local_file.read_bytes().hex())
-	# print(remote_file.read_bytes().hex())
-
 	assert sha1 == zsync_info.sha1
 
 	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 75
+
+	shutil.rmtree(tmp_path)
+
+
+@pytest.mark.zsync_available
+@pytest.mark.parametrize(
+	"file_size",
+	(2_000_000, 200_000_000),
+)
+def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
+	remote_dir = tmp_path / "remote"
+	local_dir = tmp_path / "local"
+	remote_dir.mkdir()
+	local_dir.mkdir()
+
+	remote_file = remote_dir / "testfile"
+	remote_zsync_file = remote_dir / "testfile.zsync"
+	local_file = local_dir / "testfile"
+
+	block_size = calc_block_size(file_size)
+	remote_blocks = int(file_size / block_size / 2) * 2
+	local_blocks = int(remote_blocks / 2)
+	local_bytes = local_blocks * block_size
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+		for _ in range(remote_blocks - local_blocks):
+			data = randbytes(block_size)
+			rfile.write(data)
+			lfile.write(data)
+		for _ in range(local_blocks):
+			data = randbytes(block_size)
+			rfile.write(data)
+
+	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=True)
+
+	with http_server(remote_dir) as port:
+		cmd = ["zsync", "-i", str(local_file), f"http://localhost:{port}/{remote_zsync_file.name}"]
+		out = run(cmd, cwd=local_dir, check=True, timeout=30, capture_output=True, encoding="utf-8").stdout
+		# print(out)
+		assert f"used {local_bytes} local" in out
+
+	assert hashlib.sha1(local_file.read_bytes()).digest() == hashlib.sha1(remote_file.read_bytes()).digest()
 
 	shutil.rmtree(tmp_path)
