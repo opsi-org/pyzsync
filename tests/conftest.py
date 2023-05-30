@@ -22,15 +22,15 @@ def pytest_configure(config: Config) -> None:
 PLATFORM = platform.system().lower()
 try:
 	ZSYNCMAKE_VERSION = check_output(["zsyncmake", "-V"]).decode().split("\n", 1)[0].split()[1]
-except Exception as err:  # pylint: disable=broad-except
+except Exception:  # pylint: disable=broad-except
 	ZSYNCMAKE_VERSION = ""
 try:
 	TAR_VERSION = check_output(["tar", "--version"]).decode().split("\n", 1)[0].split()[-1]
-except Exception as err:  # pylint: disable=broad-except
+except Exception:  # pylint: disable=broad-except
 	TAR_VERSION = ""
 try:
 	GZIP_VERSION = check_output(["gzip", "-V"]).decode().split("\n", 1)[0].split()[-1]
-except Exception as err:  # pylint: disable=broad-except
+except Exception:  # pylint: disable=broad-except
 	GZIP_VERSION = ""
 
 
