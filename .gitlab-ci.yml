@@ -95,15 +95,38 @@ pylint-pytest:
         path: coverage.xml
       junit: testreport.xml
 
-uibpypi:
+# Needs MATURIN_USERNAME and MATURIN_PASSWORD in env
+# Using IP address because of:
+#   http://pypi.uib.gmbh:8080/: Dns Failed: resolve dns name 'pypi.uib.gmbh:8080':
+#   failed to lookup address information: Name does not resolve
+
+uibpypi-darwin:
+  stage: publish
+  tags:
+    - win10-py311-x86
+  script:
+    - poetry install
+    - poetry run maturin build --release
+    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+  only:
+    - tags
+
+uibpypi-windows:
+  stage: publish
+  tags:
+    - win10-py311-x86
+  script:
+    - poetry install
+    - poetry run maturin build --release
+    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+  only:
+    - tags
+
+uibpypi-linux:
   stage: publish
   script:
     - poetry install
     - poetry run maturin build --release
-    # Needs MATURIN_USERNAME and MATURIN_PASSWORD in env
-    # Using IP address because of:
-    #   http://pypi.uib.gmbh:8080/: Dns Failed: resolve dns name 'pypi.uib.gmbh:8080':
-    #   failed to lookup address information: Name does not resolve
-    - poetry run maturin publish -vv --repository-url http://192.168.100.11:8080
+    - poetry run maturin publish --repository-url http://192.168.100.11:8080
   only:
     - tags

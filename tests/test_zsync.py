@@ -100,6 +100,8 @@ def test_hash_speed(tmp_path: Path):
 	shutil.rmtree(tmp_path)
 
 
+@pytest.mark.linux
+@pytest.mark.darwin
 def test_calc_block_infos(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
 	test_file = Path("tests/data/test.small")
@@ -127,6 +129,8 @@ def test_calc_block_infos(tmp_path: Path) -> None:
 	assert block_info[4].size == 817
 
 
+@pytest.mark.linux
+@pytest.mark.darwin
 def test_read_zsync_file(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
 	test_file = Path("tests/data/test.small")
@@ -280,6 +284,8 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
+@pytest.mark.linux
+@pytest.mark.darwin
 def test_create_zsync_file(tmp_path: Path) -> None:
 	zsync_file = tmp_path / "test.small.zsync"
 	test_file = Path("tests/data/test.small")
@@ -504,6 +510,8 @@ def http_server(directory: Path):
 		thread.join(3)
 
 
+@pytest.mark.linux
+@pytest.mark.darwin
 def test_patch_file_http(tmp_path: Path):
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
