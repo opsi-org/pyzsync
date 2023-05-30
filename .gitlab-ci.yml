@@ -1,0 +1,102 @@
+image: docker.uib.gmbh/opsi/dev/pybuilder:uib-python-3.11
+
+stages:
+  - test
+  #- doc
+  #- publish
+
+pytest-darwin:
+  stage: test
+  tags:
+    - catalina-py311-x64
+  script:
+    - poetry install
+    - poetry run maturin develop --release
+    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - mv .coverage coverage_darwin
+  artifacts:
+    name: 'pyzsync_test_darwin'
+    paths:
+      - coverage.xml
+      - testreport_darwin.xml
+      - coverage_darwin
+    expire_in: 3 days
+
+pytest-windows:
+  stage: test
+  tags:
+    - win10-py311-x86
+  script:
+    - poetry install
+    - poetry run maturin develop --release
+    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - Rename-Item -Path .coverage -NewName coverage_windows
+  artifacts:
+    name: 'pyzsync_test_windows'
+    paths:
+      - coverage.xml
+      - testreport_windows.xml
+      - coverage_windows
+    expire_in: 3 days
+
+pytest-linux:
+  stage: test
+  script:
+    - apt update
+    - apt --yes install tar gzip  # need tar an gzip for packaging tests
+    - poetry install
+    - poetry run maturin develop --release
+    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - mv .coverage coverage_linux
+    - poetry run python perftest/packaging-benchmarking.py
+  artifacts:
+    name: 'pyzsync_test_linux'
+    paths:
+      - coverage.xml
+      - testreport_linux.xml
+      - coverage_linux
+    expire_in: 3 days
+
+pylint-pytest:
+  stage: test
+  needs:
+    # We want to combine test coverage from all test jobs
+    - job: pytest-windows
+      artifacts: true
+    - job: pytest-darwin
+      artifacts: true
+    - job: pytest-linux
+      artifacts: true
+  script:
+    - apt-get update
+    - apt-get --yes --allow-downgrades install libsqlite3-0=3.16.2-5+deb9u1
+    - apt-get --yes install sqlite3
+    - poetry install
+    - poetry run maturin develop --release
+    - poetry run ruff tests pyzsync
+    - poetry run mypy opsicommon tests
+    - for db in coverage_*; do sqlite3 $db 'update file set path=replace(substr(path,instr(path,"opsicommon")),"\","/");'; done
+    - echo -e '[run]\nrelative_files = True\n' > .coveragerc
+    - poetry run coverage combine coverage_*
+    - poetry run coverage xml
+    - poetry run coverage report
+    - poetry run opsi-dev-tool -l info --testreport-merge testreport_*.xml testreport.xml
+  coverage: '/TOTAL\s+\d+\s+\d+\s+(\d+)%/'
+  artifacts:
+    name: 'pyzsync_test'
+    paths:
+      - coverage.xml
+    expire_in: 3 days
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+      junit: testreport.xml
+
+#uibpypi:
+#  stage: publish
+#  script:
+#    - poetry install
+#    - poetry run opsi-dev-tool -l info --uib-pypi-publish
+#  only:
+#    - tags
