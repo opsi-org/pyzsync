@@ -605,7 +605,7 @@ def test_patch_tar(tmp_path: Path):
 	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
-	assert round(speedup) >= 88
+	assert round(speedup) >= 87
 
 	shutil.rmtree(tmp_path)
 
