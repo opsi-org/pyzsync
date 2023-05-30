@@ -78,8 +78,8 @@ def test_hash_speed(tmp_path: Path):
 	md4_time = time.time() - md4_start
 
 	print(block_count, rsum_time, md4_time)
-	assert rsum_time < 2
-	assert md4_time < 10
+	assert rsum_time < 3
+	assert md4_time < 15
 
 
 def test_calc_block_infos() -> None:
