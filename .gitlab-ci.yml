@@ -15,7 +15,7 @@ pytest-darwin:
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_darwin
   artifacts:
-    name: 'pyzsync_test_darwin'
+    name: "pyzsync_test_darwin"
     paths:
       - coverage.xml
       - testreport_darwin.xml
@@ -27,12 +27,13 @@ pytest-windows:
   tags:
     - win10-py311-x86
   script:
+    - git config --global core.autocrlf false
     - poetry install
     - poetry run maturin develop --release
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - Rename-Item -Path .coverage -NewName coverage_windows
   artifacts:
-    name: 'pyzsync_test_windows'
+    name: "pyzsync_test_windows"
     paths:
       - coverage.xml
       - testreport_windows.xml
@@ -43,13 +44,13 @@ pytest-linux:
   stage: test
   script:
     - apt update
-    - apt --yes install tar gzip  # need tar an gzip for packaging tests
+    - apt --yes install tar gzip # need tar an gzip for packaging tests
     - poetry install
     - poetry run maturin develop --release
     - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_linux
   artifacts:
-    name: 'pyzsync_test_linux'
+    name: "pyzsync_test_linux"
     paths:
       - coverage.xml
       - testreport_linux.xml
@@ -82,7 +83,7 @@ pylint-pytest:
     - poetry run opsi-dev-tool -l info --testreport-merge testreport_*.xml testreport.xml
   coverage: '/TOTAL\s+\d+\s+\d+\s+(\d+)%/'
   artifacts:
-    name: 'pyzsync_test'
+    name: "pyzsync_test"
     paths:
       - coverage.xml
     expire_in: 3 days
@@ -91,7 +92,6 @@ pylint-pytest:
         coverage_format: cobertura
         path: coverage.xml
       junit: testreport.xml
-
 #uibpypi:
 #  stage: publish
 #  script:

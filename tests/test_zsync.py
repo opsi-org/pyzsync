@@ -101,10 +101,8 @@ def test_hash_speed(tmp_path: Path):
 
 
 def test_calc_block_infos(tmp_path: Path) -> None:
-	# Ensure correct line endings (git windows)
-	data = Path("tests/data/test.small").read_bytes().replace(b"\r\n", b"\n")
-	test_file = tmp_path / "test.small"
-	test_file.write_bytes(data)
+	# git config --global core.autocrlf false
+	test_file = Path("tests/data/test.small")
 
 	block_info = calc_block_infos(test_file, 2048, 4, 16)
 	assert len(block_info) == 5
@@ -130,10 +128,8 @@ def test_calc_block_infos(tmp_path: Path) -> None:
 
 
 def test_read_zsync_file(tmp_path: Path) -> None:
-	# Ensure correct line endings (git windows)
-	data = Path("tests/data/test.small").read_bytes().replace(b"\r\n", b"\n")
-	test_file = tmp_path / "test.small"
-	test_file.write_bytes(data)
+	# git config --global core.autocrlf false
+	test_file = Path("tests/data/test.small")
 	zsync_file = Path("tests/data/test.small.zsync")
 
 	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
