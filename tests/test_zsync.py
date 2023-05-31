@@ -11,6 +11,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from http.client import HTTPConnection
 from http.server import HTTPServer
+from io import BytesIO
 from pathlib import Path
 from random import randbytes
 from socketserver import ThreadingMixIn
@@ -560,7 +561,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	assert instructions[5].source != SOURCE_REMOTE
 	assert instructions[6].source == SOURCE_REMOTE
 
-	class HTTPRangeReader:
+	class HTTPRangeReader(BytesIO):
 		"""RangeRequestHandler does not support multiple ranges in one request"""
 
 		def __init__(self, host: str, port: int, path: str, ranges: list[Range]) -> None:
@@ -568,22 +569,32 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			self.path = path
 			self.ranges = sorted(ranges, key=lambda r: r.start)
 			self.range_index = 0
+			self.range_pos = self.ranges[0].start
 
-		def read(self, size: int) -> bytes:
+		def read(self, size: int | None = None) -> bytes:
 			bytes_needed = size
+			if not bytes_needed:
+				bytes_needed = self.ranges[self.range_index].end - self.range_pos
+				bytes_needed += sum([r.end - r.start for r in self.ranges[self.range_index + 1 :]])
 			data = b""
-			while bytes_needed > 0:
+			while bytes_needed != 0:
 				range = self.ranges[self.range_index]
-				range_size = range.end - range.start
+				range_size = range.end - self.range_pos
 				read_size = bytes_needed
+				start = self.range_pos
 				if range_size <= read_size:
 					read_size = range_size
-					self.range_index += 1
-				self.conn.request("GET", self.path, headers={"Range": f"bytes={range.start}-{range.start+read_size-1}"})
+					if self.range_index < len(self.ranges) - 1:
+						self.range_index += 1
+						self.range_pos = self.ranges[self.range_index].start
+				else:
+					self.range_pos += read_size
+				self.conn.request("GET", self.path, headers={"Range": f"bytes={start}-{start+read_size-1}"})
 				response = self.conn.getresponse()
 				# print(response.status, response.reason)
 				data = response.read()
 				bytes_needed -= read_size
+
 			return data
 
 	with http_server(tmp_path) as port:

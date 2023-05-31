@@ -5,8 +5,9 @@
 import hashlib
 import time
 from contextlib import ExitStack
+from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Callable, Literal, NamedTuple
+from typing import BinaryIO, Callable, Literal, NamedTuple, cast
 
 from pyzsync.pyzsync import (
 	BlockInfo,
@@ -32,26 +33,35 @@ __version__ = rs_version()
 Range = NamedTuple("Range", [("start", int), ("end", int)])
 
 
-class FileRangeReader:
+class FileRangeReader(BytesIO):
 	"""File-like reader that reads chunks of bytes from a file controlled by a list of ranges."""
 
 	def __init__(self, file: Path, ranges: list[Range]) -> None:
 		self.file = file
 		self.ranges = sorted(ranges, key=lambda r: r.start)
 		self.range_index = 0
+		self.range_pos = self.ranges[0].start
 
-	def read(self, size: int) -> bytes:
+	def read(self, size: int | None = None) -> bytes:
 		bytes_needed = size
+		if not bytes_needed:
+			bytes_needed = self.ranges[self.range_index].end - self.range_pos
+			bytes_needed += sum([r.end - r.start for r in self.ranges[self.range_index + 1 :]])
 		data = b""
 		with self.file.open("rb") as file:
-			while bytes_needed > 0:
+			while bytes_needed != 0:
 				range = self.ranges[self.range_index]
-				range_size = range.end - range.start
+				range_size = range.end - self.range_pos
 				read_size = bytes_needed
+				start = self.range_pos
 				if range_size <= read_size:
 					read_size = range_size
-					self.range_index += 1
-				file.seek(range.start)
+					if self.range_index < len(self.ranges) - 1:
+						self.range_index += 1
+						self.range_pos = self.ranges[self.range_index].start
+				else:
+					self.range_pos += read_size
+				file.seek(start)
 				data += file.read(read_size)
 				bytes_needed -= read_size
 		return data
@@ -140,9 +150,10 @@ def patch_file(
 	remote_ranges: list[Range] = [Range(i.source_offset, i.source_offset + i.size) for i in instructions if i.source == SOURCE_REMOTE]
 	stream: BinaryIO | None = None
 	if remote_ranges:
-		stream: BinaryIO = fetch_function(remote_ranges)
-		if not hasattr(stream, "read"):
+		stream = fetch_function(remote_ranges)
+		if not stream or not hasattr(stream, "read"):
 			raise ValueError("fetch_function must return a file-like object")
+	stream = cast(BinaryIO, stream)
 
 	with ExitStack() as stack:
 		fhs = [stack.enter_context(open(file, "rb")) for file in files]
