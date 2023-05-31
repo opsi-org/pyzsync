@@ -23,9 +23,10 @@ import pytest
 from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
 
 from pyzsync import (
+	SOURCE_REMOTE,
 	BlockInfo,
-	Source,
 	ZsyncFileInfo,
+	__version__,
 	calc_block_infos,
 	calc_block_size,
 	create_zsync_file,
@@ -65,6 +66,10 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 	finally:
 		server.socket.close()
 		thread.join(3)
+
+
+def test_version() -> None:
+	assert __version__ == "0.2.0"
 
 
 def test_md4() -> None:
@@ -462,13 +467,20 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 def test_patch_file_local(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
-	local_file = tmp_path / "local"
+	local_file1 = tmp_path / "local1"
+	local_file2 = tmp_path / "local2"
+	local_file3 = tmp_path / "local3"
 
 	file_size = 100_000_000
-	# file_size = 2048 * 1 + 1
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+	with (
+		open(remote_file, "wb") as rfile,
+		open(local_file1, "wb") as lfile1,
+		open(local_file2, "wb") as lfile2,
+		open(local_file3, "wb") as lfile3,
+	):
+		cnt = 1
 		for block_id in range(block_count):
 			data_size = block_size
 			if block_id == block_count - 1:
@@ -476,12 +488,13 @@ def test_patch_file_local(tmp_path: Path) -> None:
 				assert data_size <= block_size
 			block_data = randbytes(data_size)
 			rfile.write(block_data)
-			if block_id % 5 == 0:
-				continue
-			elif block_id % 10 == 0:
-				lfile.write(block_data + b"\0\0\0\0\0")
-			else:
-				lfile.write(block_data)
+			if cnt == 1:
+				lfile1.write(block_data + b"\0\0\0\0\0")
+			elif cnt == 2:
+				lfile2.write(block_data + b"\0\0")
+			elif cnt == 3:
+				lfile3.write(block_data)
+			cnt = cnt + 1 if cnt < 4 else 1
 
 	assert remote_file.stat().st_size == file_size
 
@@ -489,8 +502,9 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	create_zsync_file(remote_file, remote_zsync_file)
 
 	# Start sync
+	files = [local_file1, local_file2, local_file3]
 	zsync_info = read_zsync_file(remote_zsync_file)
-	instructions = get_patch_instructions(zsync_info, local_file)
+	instructions = get_patch_instructions(zsync_info, files)
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
@@ -501,20 +515,20 @@ def test_patch_file_local(tmp_path: Path) -> None:
 
 	output_file = tmp_path / "out"
 
-	sha1 = patch_file(local_file, instructions, fetch_function, output_file=output_file, return_hash="sha1")
+	sha1 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha1", delete_files=False)
 	assert zsync_info.sha1 == hashlib.sha1(remote_file.read_bytes()).digest()
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha1 == zsync_info.sha1
 
-	sha256 = patch_file(local_file, instructions, fetch_function, output_file=output_file, return_hash="sha256")
+	sha256 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha256", delete_files=True)
 	assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha256 == zsync_info.sha256
 
-	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
-	assert round(speedup) == 80
+	assert round(speedup) == 75
 
 	shutil.rmtree(tmp_path)
 
@@ -538,13 +552,13 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	instructions = get_patch_instructions(zsync_info, local_file)
 	# R:0, L:1, L:2, L:3, R:4-6, L:7, R:8-9
 	assert len(instructions) == 7
-	assert instructions[0].source == Source.Remote
-	assert instructions[1].source == Source.Local
-	assert instructions[2].source == Source.Local
-	assert instructions[3].source == Source.Local
-	assert instructions[4].source == Source.Remote
-	assert instructions[5].source == Source.Local
-	assert instructions[6].source == Source.Remote
+	assert instructions[0].source == SOURCE_REMOTE
+	assert instructions[1].source != SOURCE_REMOTE
+	assert instructions[2].source != SOURCE_REMOTE
+	assert instructions[3].source != SOURCE_REMOTE
+	assert instructions[4].source == SOURCE_REMOTE
+	assert instructions[5].source != SOURCE_REMOTE
+	assert instructions[6].source == SOURCE_REMOTE
 
 	with http_server(tmp_path) as port:
 		conn = HTTPConnection("localhost", port)
@@ -560,7 +574,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 		assert remote_file.read_bytes() == local_file.read_bytes()
 		assert sha256 == zsync_info.sha256
 
-	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 42
@@ -613,7 +627,7 @@ def test_patch_tar(tmp_path: Path) -> None:
 	sha1 = patch_file(local_file, instructions, fetch_function)
 	assert sha1 == zsync_info.sha1
 
-	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) >= 87
@@ -670,7 +684,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	assert sha1 == zsync_info.sha1
 
-	local_bytes = sum([i.size for i in instructions if i.source == Source.Local])
+	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 75

@@ -3,13 +3,14 @@
 # License: AGPL-3.0
 
 import hashlib
+import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Callable, Literal
 
 from pyzsync.pyzsync import (
 	BlockInfo,
 	PatchInstruction,
-	Source,
 	ZsyncFileInfo,
 	rs_calc_block_infos,
 	rs_calc_block_size,
@@ -20,8 +21,13 @@ from pyzsync.pyzsync import (
 	rs_read_zsync_file,
 	rs_rsum,
 	rs_update_rsum,
+	rs_version,
 	rs_write_zsync_file,
 )
+
+SOURCE_REMOTE = -1
+
+__version__ = rs_version()
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
@@ -60,40 +66,63 @@ def create_zsync_info(file: Path, *, legacy_mode: bool = False) -> ZsyncFileInfo
 	return rs_create_zsync_info(file, legacy_mode)
 
 
-def get_patch_instructions(zsync_info: ZsyncFileInfo, file: Path) -> list[PatchInstruction]:
-	return rs_get_patch_instructions(zsync_info, file)
+def get_patch_instructions(zsync_info: ZsyncFileInfo, files: Path | list[Path]) -> list[PatchInstruction]:
+	if not isinstance(files, list):
+		files = [files]
+	return rs_get_patch_instructions(zsync_info, files)
 
 
 def patch_file(
-	file: Path,
+	files: Path | list[Path],
 	instructions: list[PatchInstruction],
 	fetch_function: Callable,
 	*,
 	output_file: Path | None = None,
+	delete_files: bool = True,
 	return_hash: Literal["sha1", "sha256"] | None = "sha1",
 ) -> bytes:
 	"""
 	Returns SHA-1 digest
 	"""
+	if not isinstance(files, list):
+		files = [files]
+
 	if not output_file:
-		output_file = file
+		output_file = files[0]
+
+	timestamp_millis = int(1000 * time.time())
+	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp-{timestamp_millis}").resolve()
+	for idx, file in enumerate(files):
+		files[idx] = file.resolve()
+		if files[idx] == tmp_file:
+			raise ValueError(f"Invalid filename {files[idx]}")
+
 	_hash = None
 	if return_hash:
 		_hash = hashlib.new(return_hash)
-	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp")
-	with (open(file, "rb") as lfile, open(tmp_file, "wb") as tfile):
-		for instruction in instructions:
-			if instruction.source == Source.Local:
-				lfile.seek(instruction.source_offset)
-				data = lfile.read(instruction.size)
-			else:
-				data = fetch_function(instruction.source_offset, instruction.size)
-			tfile.write(data)
-			if _hash:
-				_hash.update(data)
+
+	with ExitStack() as stack:
+		fhs = [stack.enter_context(open(file, "rb")) for file in files]
+		with open(tmp_file, "wb") as fht:
+			for instruction in instructions:
+				if instruction.source == SOURCE_REMOTE:
+					data = fetch_function(instruction.source_offset, instruction.size)
+				else:
+					fhs[instruction.source].seek(instruction.source_offset)
+					data = fhs[instruction.source].read(instruction.size)
+				fht.write(data)
+				if _hash:
+					_hash.update(data)
+
 	if output_file.exists():
 		output_file.unlink()
 	tmp_file.rename(output_file)
+
+	if delete_files:
+		for file in files:
+			if file.exists() and file != output_file:
+				file.unlink()
+
 	if _hash:
 		return _hash.digest()
 	return b""

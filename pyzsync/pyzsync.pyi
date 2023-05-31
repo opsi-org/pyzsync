@@ -4,7 +4,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import IntEnum
 from pathlib import Path
 
 @dataclass
@@ -31,20 +30,17 @@ class ZsyncFileInfo:
 	checksum_bytes: int
 	block_info: list[BlockInfo]
 
-class Source(IntEnum):
-	Local = 1
-	Remote = 2
-
 class PatchInstruction:
 	"""
 	Position are zero-indexed & inclusive
 	"""
 
-	source: Source
+	source: int
 	source_offset: int
 	target_offset: int
 	size: int
 
+def rs_version() -> str: ...
 def rs_md4(block: bytes, num_bytes: int) -> bytes: ...
 def rs_rsum(block: bytes, num_bytes: int) -> int: ...
 def rs_update_rsum(rsum: int, old_char: int, new_char: int) -> int: ...
@@ -54,4 +50,4 @@ def rs_read_zsync_file(zsync_file: Path) -> ZsyncFileInfo: ...
 def rs_write_zsync_file(zsync_info: ZsyncFileInfo, zsync_file: Path) -> None: ...
 def rs_create_zsync_file(file: Path, zsync_file: Path, legacy_mode: bool) -> None: ...
 def rs_create_zsync_info(file: Path, legacy_mode: bool) -> ZsyncFileInfo: ...
-def rs_get_patch_instructions(zsync_info: ZsyncFileInfo, file: Path) -> list[PatchInstruction]: ...
+def rs_get_patch_instructions(zsync_info: ZsyncFileInfo, files: list[Path]) -> list[PatchInstruction]: ...
