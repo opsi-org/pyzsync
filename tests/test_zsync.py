@@ -17,7 +17,7 @@ from socketserver import ThreadingMixIn
 from statistics import mean
 from subprocess import run
 from threading import Thread
-from typing import Any, Generator
+from typing import Any, BinaryIO, Generator
 
 import pytest
 from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
@@ -25,6 +25,8 @@ from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
 from pyzsync import (
 	SOURCE_REMOTE,
 	BlockInfo,
+	FileRangeReader,
+	Range,
 	ZsyncFileInfo,
 	__version__,
 	calc_block_infos,
@@ -508,10 +510,8 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(offset: int, size: int) -> bytes:
-		with open(remote_file, "rb") as rfile:
-			rfile.seek(offset)
-			return rfile.read(size)
+	def fetch_function(ranges: list[Range]) -> BinaryIO:
+		return FileRangeReader(remote_file, ranges)
 
 	output_file = tmp_path / "out"
 
@@ -560,14 +560,37 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	assert instructions[5].source != SOURCE_REMOTE
 	assert instructions[6].source == SOURCE_REMOTE
 
+	class HTTPRangeReader:
+		"""RangeRequestHandler does not support multiple ranges in one request"""
+
+		def __init__(self, host: str, port: int, path: str, ranges: list[Range]) -> None:
+			self.conn = HTTPConnection(host, port)
+			self.path = path
+			self.ranges = sorted(ranges, key=lambda r: r.start)
+			self.range_index = 0
+
+		def read(self, size: int) -> bytes:
+			bytes_needed = size
+			data = b""
+			while bytes_needed > 0:
+				range = self.ranges[self.range_index]
+				range_size = range.end - range.start
+				read_size = bytes_needed
+				if range_size <= read_size:
+					read_size = range_size
+					self.range_index += 1
+				self.conn.request("GET", self.path, headers={"Range": f"bytes={range.start}-{range.start+read_size-1}"})
+				response = self.conn.getresponse()
+				# print(response.status, response.reason)
+				data = response.read()
+				bytes_needed -= read_size
+			return data
+
 	with http_server(tmp_path) as port:
 		conn = HTTPConnection("localhost", port)
 
-		def fetch_function(offset: int, size: int) -> bytes:
-			conn.request("GET", "/remote", headers={"Range": f"bytes={offset}-{offset + size - 1}"})
-			response = conn.getresponse()
-			# print(response.status, response.reason)
-			return response.read()
+		def fetch_function(ranges: list[Range]) -> BinaryIO:
+			return HTTPRangeReader("localhost", port, "/remote", ranges)
 
 		sha256 = patch_file(local_file, instructions, fetch_function, return_hash="sha256")
 		assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
@@ -619,10 +642,8 @@ def test_patch_tar(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(offset: int, size: int) -> bytes:
-		with open(remote_file, "rb") as rfile:
-			rfile.seek(offset)
-			return rfile.read(size)
+	def fetch_function(ranges: list[Range]) -> BinaryIO:
+		return FileRangeReader(remote_file, ranges)
 
 	sha1 = patch_file(local_file, instructions, fetch_function)
 	assert sha1 == zsync_info.sha1
@@ -675,10 +696,8 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	instructions = get_patch_instructions(zsync_info, local_file)
 
-	def fetch_function(offset: int, size: int) -> bytes:
-		with open(remote_file, "rb") as rfile:
-			rfile.seek(offset)
-			return rfile.read(size)
+	def fetch_function(ranges: list[Range]) -> BinaryIO:
+		return FileRangeReader(remote_file, ranges)
 
 	sha1 = patch_file(local_file, instructions, fetch_function)
 

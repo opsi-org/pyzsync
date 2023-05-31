@@ -6,7 +6,7 @@ import hashlib
 import time
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Callable, Literal
+from typing import BinaryIO, Callable, Literal, NamedTuple
 
 from pyzsync.pyzsync import (
 	BlockInfo,
@@ -28,6 +28,33 @@ from pyzsync.pyzsync import (
 SOURCE_REMOTE = -1
 
 __version__ = rs_version()
+
+Range = NamedTuple("Range", [("start", int), ("end", int)])
+
+
+class FileRangeReader:
+	"""File-like reader that reads chunks of bytes from a file controlled by a list of ranges."""
+
+	def __init__(self, file: Path, ranges: list[Range]) -> None:
+		self.file = file
+		self.ranges = sorted(ranges, key=lambda r: r.start)
+		self.range_index = 0
+
+	def read(self, size: int) -> bytes:
+		bytes_needed = size
+		data = b""
+		with self.file.open("rb") as file:
+			while bytes_needed > 0:
+				range = self.ranges[self.range_index]
+				range_size = range.end - range.start
+				read_size = bytes_needed
+				if range_size <= read_size:
+					read_size = range_size
+					self.range_index += 1
+				file.seek(range.start)
+				data += file.read(read_size)
+				bytes_needed -= read_size
+		return data
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
@@ -82,7 +109,16 @@ def patch_file(
 	return_hash: Literal["sha1", "sha256"] | None = "sha1",
 ) -> bytes:
 	"""
-	Returns SHA-1 digest
+	Patches file by given instructions.
+	Remote instructions are fetched via fetch_function.
+
+	:param files: A local file or a list of local files to read the supplied local instructions from.
+	:param instructions: List of patch instructions.
+	:param fetch_function: A function that must accept a list of Ranges and return a file-like object with read method.
+	:param output_file: Output file. If `None` first supplied file will be used as output file.
+	:param delete_files: Delete supplied extra files after patching.
+	:param return_hash: Type of hash to return. If `None` no hash will be returned.
+	:return: Hash of patched file.
 	"""
 	if not isinstance(files, list):
 		files = [files]
@@ -101,12 +137,19 @@ def patch_file(
 	if return_hash:
 		_hash = hashlib.new(return_hash)
 
+	remote_ranges: list[Range] = [Range(i.source_offset, i.source_offset + i.size) for i in instructions if i.source == SOURCE_REMOTE]
+	stream: BinaryIO | None = None
+	if remote_ranges:
+		stream: BinaryIO = fetch_function(remote_ranges)
+		if not hasattr(stream, "read"):
+			raise ValueError("fetch_function must return a file-like object")
+
 	with ExitStack() as stack:
 		fhs = [stack.enter_context(open(file, "rb")) for file in files]
 		with open(tmp_file, "wb") as fht:
 			for instruction in instructions:
 				if instruction.source == SOURCE_REMOTE:
-					data = fetch_function(instruction.source_offset, instruction.size)
+					data = stream.read(instruction.size)
 				else:
 					fhs[instruction.source].seek(instruction.source_offset)
 					data = fhs[instruction.source].read(instruction.size)
