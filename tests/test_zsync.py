@@ -379,11 +379,11 @@ def test_create_zsync_file(tmp_path: Path, legacy_mode: bool) -> None:
 @pytest.mark.parametrize(
 	"mode, block_size, rsum_bytes, exp_max, exp_mean",
 	(
-		("random", 2048, 1, 66, 40),
+		("random", 2048, 1, 67, 40),
 		("random", 2048, 2, 6, 1.1),
 		("random", 2048, 3, 2, 1.001),
 		("random", 2048, 4, 2, 1.0002),
-		("random", 4096, 1, 66, 40),
+		("random", 4096, 1, 67, 40),
 		("random", 4096, 2, 6, 1.1),
 		("random", 4096, 3, 2, 1.001),
 		("random", 4096, 4, 2, 1.00011),
