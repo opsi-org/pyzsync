@@ -587,7 +587,6 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			return data
 
 	with http_server(tmp_path) as port:
-		conn = HTTPConnection("localhost", port)
 
 		def fetch_function(ranges: list[Range]) -> BinaryIO:
 			return HTTPRangeReader("localhost", port, "/remote", ranges)
