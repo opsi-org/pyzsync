@@ -575,11 +575,11 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			bytes_needed = size
 			if not bytes_needed:
 				bytes_needed = self.ranges[self.range_index].end - self.range_pos
-				bytes_needed += sum([r.end - r.start for r in self.ranges[self.range_index + 1 :]])
+				bytes_needed += sum([r.end - r.start + 1 for r in self.ranges[self.range_index + 1 :]])
 			data = b""
 			while bytes_needed != 0:
 				range = self.ranges[self.range_index]
-				range_size = range.end - self.range_pos
+				range_size = range.end + 1 - self.range_pos
 				read_size = bytes_needed
 				start = self.range_pos
 				if range_size <= read_size:

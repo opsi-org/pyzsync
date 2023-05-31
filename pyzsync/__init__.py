@@ -30,7 +30,12 @@ SOURCE_REMOTE = -1
 
 __version__ = rs_version()
 
-Range = NamedTuple("Range", [("start", int), ("end", int)])
+
+class Range(NamedTuple):
+	"""Range (zero-indexed & inclusive). 0-1023 = first 1024 bytes"""
+
+	start: int
+	end: int
 
 
 class FileRangeReader(BytesIO):
@@ -46,12 +51,12 @@ class FileRangeReader(BytesIO):
 		bytes_needed = size
 		if not bytes_needed:
 			bytes_needed = self.ranges[self.range_index].end - self.range_pos
-			bytes_needed += sum([r.end - r.start for r in self.ranges[self.range_index + 1 :]])
+			bytes_needed += sum([r.end - r.start + 1 for r in self.ranges[self.range_index + 1 :]])
 		data = b""
 		with self.file.open("rb") as file:
 			while bytes_needed != 0:
 				range = self.ranges[self.range_index]
-				range_size = range.end - self.range_pos
+				range_size = range.end + 1 - self.range_pos
 				read_size = bytes_needed
 				start = self.range_pos
 				if range_size <= read_size:
@@ -147,7 +152,7 @@ def patch_file(
 	if return_hash:
 		_hash = hashlib.new(return_hash)
 
-	remote_ranges: list[Range] = [Range(i.source_offset, i.source_offset + i.size) for i in instructions if i.source == SOURCE_REMOTE]
+	remote_ranges: list[Range] = [Range(i.source_offset, i.source_offset + i.size - 1) for i in instructions if i.source == SOURCE_REMOTE]
 	stream: BinaryIO | None = None
 	if remote_ranges:
 		stream = fetch_function(remote_ranges)
