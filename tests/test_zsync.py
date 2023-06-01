@@ -28,6 +28,7 @@ from pyzsync import (
 	SOURCE_REMOTE,
 	BlockInfo,
 	FileRangeReader,
+	HTTPRangeReader,
 	Range,
 	ZsyncFileInfo,
 	__version__,
@@ -74,7 +75,7 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 
 
 def test_version() -> None:
-	assert __version__ == "0.3.0"
+	assert __version__ == "0.4.0"
 
 
 def test_md4() -> None:
@@ -520,11 +521,13 @@ def test_patch_file_local(tmp_path: Path) -> None:
 
 	sha1 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha1", delete_files=False)
 	assert zsync_info.sha1 == hashlib.sha1(remote_file.read_bytes()).digest()
+	assert remote_file.stat().st_size == output_file.stat().st_size
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha1 == zsync_info.sha1
 
 	sha256 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha256", delete_files=True)
 	assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
+	assert remote_file.stat().st_size == output_file.stat().st_size
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha256 == zsync_info.sha256
 
@@ -536,7 +539,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-def test_patch_file_http(tmp_path: Path) -> None:
+def test_patch_file_http_ranges(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -563,46 +566,38 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	assert instructions[5].source != SOURCE_REMOTE
 	assert instructions[6].source == SOURCE_REMOTE
 
-	class HTTPRangeReader(BytesIO):
-		"""RangeRequestHandler does not support multiple ranges in one request"""
 
-		def __init__(self, host: str, port: int, path: str, ranges: list[Range]) -> None:
-			self.conn = HTTPConnection(host, port)
-			self.path = path
-			self.ranges = sorted(ranges, key=lambda r: r.start)
-			self.range_index = 0
-			self.range_pos = self.ranges[0].start
+def test_patch_file_http_reader(tmp_path: Path) -> None:
+	# RangeRequestHandler does not support multiple ranges in one request!
+	remote_file = tmp_path / "remote"
+	remote_zsync_file = tmp_path / "remote.zsync"
+	local_file = tmp_path / "local"
 
-		def read(self, size: int | None = None) -> bytes:
-			bytes_needed = size
-			if not bytes_needed:
-				bytes_needed = self.ranges[self.range_index].end - self.range_pos
-				bytes_needed += sum([r.end - r.start + 1 for r in self.ranges[self.range_index + 1 :]])
-			data = b""
-			while bytes_needed != 0:
-				range = self.ranges[self.range_index]
-				range_size = range.end + 1 - self.range_pos
-				read_size = bytes_needed
-				start = self.range_pos
-				if range_size <= read_size:
-					read_size = range_size
-					if self.range_index < len(self.ranges) - 1:
-						self.range_index += 1
-						self.range_pos = self.ranges[self.range_index].start
-				else:
-					self.range_pos += read_size
-				self.conn.request("GET", self.path, headers={"Range": f"bytes={start}-{start+read_size-1}"})
-				response = self.conn.getresponse()
-				# print(response.status, response.reason)
-				data = response.read()
-				bytes_needed -= read_size
+	block_count = 10
+	block_size = 2048
+	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+		for block_id in range(block_count):
+			block_data = randbytes(int(block_size / 2) if block_id == block_count - 1 else block_size)
+			rfile.write(block_data)
+			if block_id < 5:
+				lfile.write(block_data)
 
-			return data
+	create_zsync_file(remote_file, remote_zsync_file)
+	zsync_info = read_zsync_file(remote_zsync_file)
+	instructions = get_patch_instructions(zsync_info, local_file)
+	# L:0, L:1, L:2, L:3, L:4, R:5-9
+	assert len(instructions) == 6
+	assert instructions[0].source != SOURCE_REMOTE
+	assert instructions[1].source != SOURCE_REMOTE
+	assert instructions[2].source != SOURCE_REMOTE
+	assert instructions[3].source != SOURCE_REMOTE
+	assert instructions[4].source != SOURCE_REMOTE
+	assert instructions[5].source == SOURCE_REMOTE
 
 	with http_server(tmp_path) as port:
 
 		def fetch_function(ranges: list[Range]) -> BinaryIO:
-			return HTTPRangeReader("localhost", port, "/remote", ranges)
+			return HTTPRangeReader(f"http://localhost:{port}/remote", ranges)
 
 		sha256 = patch_file(local_file, instructions, fetch_function, return_hash="sha256")
 		assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
@@ -612,7 +607,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
-	assert round(speedup) == 42
+	assert round(speedup) == 53
 
 	shutil.rmtree(tmp_path)
 

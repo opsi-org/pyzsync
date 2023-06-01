@@ -5,9 +5,12 @@
 import hashlib
 import time
 from contextlib import ExitStack
+from http.client import HTTPConnection, HTTPSConnection
 from io import BytesIO
+from logging import getLogger
 from pathlib import Path
 from typing import BinaryIO, Callable, Literal, NamedTuple, cast
+from urllib.parse import urlparse
 
 from pyzsync.pyzsync import (
 	BlockInfo,
@@ -29,6 +32,8 @@ from pyzsync.pyzsync import (
 SOURCE_REMOTE = -1
 
 __version__ = rs_version()
+
+logger = getLogger("pyzsync")
 
 
 class Range(NamedTuple):
@@ -70,6 +75,83 @@ class FileRangeReader(BytesIO):
 				data += file.read(read_size)
 				bytes_needed -= read_size
 		return data
+
+
+class HTTPRangeReader(BytesIO):
+	"""File-like reader that reads chunks of bytes over HTTP controlled by a list of ranges."""
+
+	def __init__(self, url: str, ranges: list[Range], *, headers: dict[str, str] | None = None) -> None:
+		self.url = urlparse(url)
+		self.ranges = sorted(ranges, key=lambda r: r.start)
+		self.headers = cast(dict[str, str], headers or {})
+
+		byte_ranges = ", ".join(f"{r.start}-{r.end}" for r in self.ranges)
+		self.headers["Range"] = f"bytes={byte_ranges}"
+		self.headers["Accept-Encoding"] = "identity"
+
+		conn_class = HTTPConnection if self.url.scheme == "http" else HTTPSConnection
+		self.connection = conn_class(self.url.netloc, timeout=8 * 3600, blocksize=65536)
+		logger.info("Sending GET request to %s", self.url.geturl())
+		self.connection.request("GET", self.url.path, headers=self.headers)
+		self.response = self.connection.getresponse()
+		logger.debug("Received response: %r, headers: %r", self.response.status, dict(self.response.headers))
+		if self.response.status < 200 or self.response.status > 299:
+			raise RuntimeError(f"Failed to fetch ranges from {self.url.geturl()}: {self.response.status} - {self.response.read()}")
+
+		self.total_size = int(self.response.headers["Content-Length"])
+		self.position = 0
+		self.percentage = -1
+		self.raw_data = b""
+		self.data = b""
+		self.in_body = False
+		self.boundary = b""
+		ctype = self.response.headers["Content-Type"]
+		if ctype.startswith("multipart/byteranges"):
+			boundary = [p.split("=", 1)[1].strip() for p in ctype.split(";") if p.strip().startswith("boundary=")]
+			if not boundary:
+				raise ValueError("No boundary found in Content-Type")
+			self.boundary = boundary[0].encode("ascii")
+
+	def read(self, size: int) -> bytes:
+		return_data = b""
+		if self.boundary:
+			while len(self.data) < size:
+				self.raw_data += self.response.read(65536)
+				if not self.in_body:
+					idx = self.raw_data.find(self.boundary)
+					if idx == -1:
+						raise RuntimeError("Failed to read multipart")
+					idx = self.raw_data.find(b"\n\n", idx)
+					if idx == -1:
+						raise RuntimeError("Failed to read multipart")
+					self.raw_data = self.raw_data[idx + 2 :]
+					self.in_body = True
+
+				idx = self.raw_data.find(b"\n--" + self.boundary)
+				if idx == -1:
+					self.data += self.raw_data
+				else:
+					self.data += self.raw_data[:idx]
+					self.raw_data = self.raw_data[idx:]
+					self.in_body = False
+			return_data = self.data[:size]
+			self.data = self.data[size:]
+		else:
+			return_data = self.response.read(size)
+
+		self.position += len(return_data)
+
+		percentage = int(self.position * 100 / self.total_size)
+		if percentage > self.percentage:
+			self.percentage = percentage
+			logger.info(
+				"zsync %r: %s%% (%0.2f/%0.2f MB)",
+				self.url.geturl(),
+				self.percentage,
+				self.position / 1_000_000,
+				self.total_size / 1_000_000,
+			)
+		return return_data
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
@@ -135,6 +217,7 @@ def patch_file(
 	:param return_hash: Type of hash to return. If `None` no hash will be returned.
 	:return: Hash of patched file.
 	"""
+	chunk_size = 65536
 	if not isinstance(files, list):
 		files = [files]
 
@@ -164,15 +247,21 @@ def patch_file(
 		fhs = [stack.enter_context(open(file, "rb")) for file in files]
 		with open(tmp_file, "wb") as fht:
 			for instruction in instructions:
-				if instruction.source == SOURCE_REMOTE:
-					data = stream.read(instruction.size)
-				else:
+				bytes_read = 0
+				if instruction.source != SOURCE_REMOTE:
 					fhs[instruction.source].seek(instruction.source_offset)
-					data = fhs[instruction.source].read(instruction.size)
-				fht.write(data)
-				if _hash:
-					_hash.update(data)
-
+				while bytes_read < instruction.size:
+					read_size = instruction.size - bytes_read
+					if read_size > chunk_size:
+						read_size = chunk_size
+					if instruction.source == SOURCE_REMOTE:
+						data = stream.read(read_size)
+					else:
+						data = fhs[instruction.source].read(read_size)
+					fht.write(data)
+					if _hash:
+						_hash.update(data)
+					bytes_read += read_size
 	if output_file.exists():
 		output_file.unlink()
 	tmp_file.rename(output_file)
