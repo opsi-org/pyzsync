@@ -112,7 +112,9 @@ class HTTPRangeReader(BytesIO):
 				raise ValueError("No boundary found in Content-Type")
 			self.boundary = boundary[0].encode("ascii")
 
-	def read(self, size: int) -> bytes:
+	def read(self, size: int | None = None) -> bytes:
+		if not size:
+			size = self.total_size - self.position
 		return_data = b""
 		if self.boundary:
 			while len(self.data) < size:

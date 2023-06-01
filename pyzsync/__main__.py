@@ -42,8 +42,8 @@ def main() -> None:
 	logging.getLogger().setLevel(logging.INFO)
 
 	if args.command == "zsyncmake":
-		file = Path(args.file)
-		create_zsync_file(file=file, zsync_file=file.with_name(f"{file.name}.zsync"))
+		file_path = Path(args.file)
+		create_zsync_file(file=file_path, zsync_file=file_path.with_name(f"{file_path.name}.zsync"))
 
 	elif args.command == "zsync":
 		url = urlparse(args.zsync_url)
@@ -85,7 +85,7 @@ def main() -> None:
 
 		sha1 = patch_file(local_file, instructions, fetch_function, return_hash="sha1")
 		if sha1 != zsync_info.sha1:
-			raise RuntimeError(f"SHA1 mismatch: {sha1} != {zsync_info.sha1}")
+			raise RuntimeError(f"SHA1 mismatch: {sha1.hex()} != {zsync_info.sha1.hex()}")
 
 		print(f"Successfully created {local_file}")
 
