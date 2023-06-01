@@ -92,13 +92,14 @@ class HTTPRangeReader(BytesIO):
 		conn_class = HTTPConnection if self.url.scheme == "http" else HTTPSConnection
 		self.connection = conn_class(self.url.netloc, timeout=8 * 3600, blocksize=65536)
 		logger.info("Sending GET request to %s", self.url.geturl())
+		logger.debug("Sending GET request with headers: %r", self.headers)
 		self.connection.request("GET", self.url.path, headers=self.headers)
 		self.response = self.connection.getresponse()
 		logger.debug("Received response: %r, headers: %r", self.response.status, dict(self.response.headers))
 		if self.response.status < 200 or self.response.status > 299:
 			raise RuntimeError(f"Failed to fetch ranges from {self.url.geturl()}: {self.response.status} - {self.response.read()}")
 
-		self.total_size = int(self.response.headers["Content-Length"])
+		self.total_size = sum(r.end - r.start + 1 for r in self.ranges)
 		self.position = 0
 		self.percentage = -1
 		self.raw_data = b""
