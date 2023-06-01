@@ -425,6 +425,10 @@ fn rs_get_patch_instructions(
 
     for (file_id, file_path) in file_paths.iter().enumerate() {
         info!("Processing file #{}: {:?}", file_id, file_path);
+        if !file_path.exists() {
+            File::create(file_path)?;
+            continue;
+        }
         let file = File::open(file_path)?;
         let metadata = file.metadata()?;
         let size = metadata.len();
@@ -441,13 +445,15 @@ fn rs_get_patch_instructions(
         // Continuously fill a buffer with bytes from the file and update the rsum.
         // If current rsum is found in map, also check md4.
         // Add matches to patch_instructions.
-        while pos < size {
-            let new_percent: u8 = ((pos as f64 / size as f64) * 100.0).ceil() as u8;
-            if new_percent != percent {
+        loop {
+            let new_percent: u8 = ((pos as f64 / size as f64) * 100.0) as u8;
+            if new_percent != percent || pos == 0 || pos >= size {
                 percent = new_percent;
-                info!("pos: {}/{} ({} %)", pos, zsync_file_info.length, percent);
+                info!("pos: {}/{} ({} %)", pos, size, percent);
             }
-
+            if pos >= size {
+                break;
+            }
             // Fill the buffer with chars until the block size is reached.
             let add_chars = zsync_file_info.block_size - buf.len() as u32;
             while buf.len() < zsync_file_info.block_size as usize {
