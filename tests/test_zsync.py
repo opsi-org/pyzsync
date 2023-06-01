@@ -73,7 +73,7 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 
 
 def test_version() -> None:
-	assert __version__ == "0.2.0"
+	assert __version__ == "0.3.0"
 
 
 def test_md4() -> None:
