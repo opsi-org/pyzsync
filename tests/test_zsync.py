@@ -33,6 +33,7 @@ from pyzsync import (
 	calc_block_infos,
 	calc_block_size,
 	create_zsync_file,
+	create_zsync_info,
 	get_patch_instructions,
 	md4,
 	patch_file,
@@ -761,3 +762,84 @@ def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
 	assert hashlib.sha1(local_file.read_bytes()).digest() == hashlib.sha1(remote_file.read_bytes()).digest()
 
 	shutil.rmtree(tmp_path)
+
+
+def test_errors(tmp_path: Path) -> None:
+	some_file = tmp_path / "some_file"
+	some_file.write_bytes(b"data")
+	some_zsync_file = tmp_path / "some_file.zsync"
+	create_zsync_file(some_file, some_zsync_file)
+	some_zsync_info = read_zsync_file(some_zsync_file)
+
+	with pytest.raises(ValueError, match="num_bytes out of range"):
+		md4(block=b"data", num_bytes=18)
+
+	with pytest.raises(ValueError, match="num_bytes out of range"):
+		rsum(block=b"data", num_bytes=5)
+
+	with pytest.raises(ValueError, match="Invalid block_size"):
+		calc_block_infos(file=some_file, block_size=1)
+
+	with pytest.raises(ValueError, match="rsum_bytes out of range"):
+		calc_block_infos(file=some_file, block_size=2048, rsum_bytes=10)
+
+	with pytest.raises(ValueError, match="checksum_bytes out of range"):
+		calc_block_infos(file=some_file, block_size=2048, checksum_bytes=33)
+
+	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+		calc_block_infos(file=Path("nonexistent"), block_size=2048)
+
+	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+		create_zsync_info(Path("nonexistent"))
+
+	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+		create_zsync_file(Path("nonexistent"), tmp_path / "some.zsync")
+
+	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+		write_zsync_file(zsync_info=some_zsync_info, zsync_file=Path("/tmp/no/such/path"))
+
+	zsync_file = tmp_path / "fail.zsync"
+
+	zsync_file.write_text("SHA-1: 123\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid SHA-1 value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("SHA-256: 123\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid SHA-256 value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("SHA-256: 00112233\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid SHA-256 value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("MTime: 123\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid MTime value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Blocksize: fail\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="invalid digit found"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Length: fail\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="invalid digit found"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Hash-Lengths: fail\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid Hash-Lengths value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Hash-Lengths: 1,2,3,4\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="Invalid Hash-Lengths value"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Hash-Lengths: 9,2,2\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="seq_matches out of range"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Hash-Lengths: 2,10,2\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="rsum_bytes out of range"):
+		read_zsync_file(zsync_file=zsync_file)
+
+	zsync_file.write_text("Hash-Lengths: 2,2,20\n", encoding="utf-8")
+	with pytest.raises(ValueError, match="checksum_bytes out of range"):
+		read_zsync_file(zsync_file=zsync_file)

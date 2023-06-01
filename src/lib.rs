@@ -5,6 +5,7 @@
 */
 use chrono::prelude::*;
 use log::{debug, info};
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::{types::PyBytes, wrap_pyfunction};
 use sha1::{Digest, Sha1};
@@ -208,10 +209,18 @@ impl PatchInstruction {
     }
 }
 
+#[pyfunction]
+fn rs_version() -> PyResult<String> {
+    Ok(PYZSYNC_VERSION.to_string())
+}
+
 /// Get the md4 hash of a block
-fn _md4(block: &Vec<u8>, num_bytes: u8) -> [u8; CHECKSUM_SIZE] {
+fn _md4(block: &Vec<u8>, num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
     if num_bytes <= 0 || num_bytes > CHECKSUM_SIZE as u8 {
-        panic!("num_bytes out of range: {}", num_bytes);
+        return Err(PyValueError::new_err(format!(
+            "num_bytes out of range: {}",
+            num_bytes
+        )));
     }
     let mut checksum: [u8; CHECKSUM_SIZE] = md4::md4(block);
     if (num_bytes as usize) < CHECKSUM_SIZE {
@@ -219,24 +228,22 @@ fn _md4(block: &Vec<u8>, num_bytes: u8) -> [u8; CHECKSUM_SIZE] {
             checksum[idx] = 0u8;
         }
     }
-    checksum
-}
-
-#[pyfunction]
-fn rs_version() -> PyResult<String> {
-    Ok(PYZSYNC_VERSION.to_string())
+    Ok(checksum)
 }
 
 #[pyfunction]
 fn rs_md4(block: &PyBytes, num_bytes: u8, py: Python<'_>) -> PyResult<PyObject> {
-    let res = _md4(block.as_bytes().to_vec().as_ref(), num_bytes);
+    let res = _md4(block.as_bytes().to_vec().as_ref(), num_bytes)?;
     Ok(PyBytes::new(py, &res).into())
 }
 
 /// Get the rsum of a block
-fn _rsum(block: &Vec<u8>, num_bytes: u8) -> u32 {
+fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
     if num_bytes <= 0 || num_bytes > RSUM_SIZE as u8 {
-        panic!("num_bytes out of range: {}", num_bytes);
+        return Err(PyValueError::new_err(format!(
+            "num_bytes out of range: {}",
+            num_bytes
+        )));
     }
     let mut a: u16 = 0;
     let mut b: u16 = 0;
@@ -253,12 +260,12 @@ fn _rsum(block: &Vec<u8>, num_bytes: u8) -> u32 {
         let mask = 0xffffffff >> (8 * (RSUM_SIZE as u8 - num_bytes));
         res &= mask;
     }
-    res
+    Ok(res)
 }
 
 #[pyfunction]
 fn rs_rsum(block: &PyBytes, num_bytes: u8) -> PyResult<u32> {
-    let res = _rsum(block.as_bytes().to_vec().as_ref(), num_bytes);
+    let res = _rsum(block.as_bytes().to_vec().as_ref(), num_bytes)?;
     Ok(res)
 }
 
@@ -290,19 +297,32 @@ fn _calc_block_infos(
     block_size: u16,
     mut rsum_bytes: u8,
     mut checksum_bytes: u8,
-) -> Result<(Vec<BlockInfo>, [u8; 20], [u8; 32]), std::io::Error> {
+) -> Result<(Vec<BlockInfo>, [u8; 20], [u8; 32]), PyErr> {
+    if block_size != 2048 && block_size != 4096 {
+        return Err(PyValueError::new_err(format!(
+            "Invalid block_size: {}",
+            block_size
+        )));
+    }
+
     if rsum_bytes < 1 {
         // rsum disabled
         rsum_bytes = 0;
     } else if rsum_bytes > RSUM_SIZE as u8 {
-        panic!("rsum_bytes out of range: {}", rsum_bytes);
+        return Err(PyValueError::new_err(format!(
+            "rsum_bytes out of range: {}",
+            rsum_bytes
+        )));
     }
 
     if checksum_bytes < 1 {
         // checksum disabled
         checksum_bytes = 0;
     } else if checksum_bytes > CHECKSUM_SIZE as u8 {
-        panic!("checksum_bytes out of range: {}", checksum_bytes);
+        return Err(PyValueError::new_err(format!(
+            "checksum_bytes out of range: {}",
+            checksum_bytes
+        )));
     }
 
     let mut sha1 = Sha1::new();
@@ -328,12 +348,12 @@ fn _calc_block_infos(
 
         let mut checksum = [0u8; CHECKSUM_SIZE];
         if checksum_bytes > 0 {
-            checksum = _md4(block.as_ref(), checksum_bytes);
+            checksum = _md4(block.as_ref(), checksum_bytes)?;
         }
 
         let mut rsum: u32 = 0;
         if rsum_bytes > 0 {
-            rsum = _rsum(block.as_ref(), rsum_bytes);
+            rsum = _rsum(block.as_ref(), rsum_bytes)?;
         }
 
         let block_info = BlockInfo {
@@ -391,10 +411,10 @@ fn rs_get_patch_instructions(
     }
 
     if sum_block_size != zsync_file_info.length {
-        panic!(
+        return Err(PyValueError::new_err(format!(
             "Sum of block sizes {} does not match file info length {}",
             sum_block_size, zsync_file_info.length
-        );
+        )));
     }
 
     let mut patch_instructions: Vec<PatchInstruction> = Vec::new();
@@ -446,7 +466,7 @@ fn rs_get_patch_instructions(
                 rsum = _update_rsum(rsum, old_char, new_char);
             } else {
                 // More than one char added to buffer, calculate new rsum
-                rsum = _rsum(&buf, RSUM_SIZE as u8);
+                rsum = _rsum(&buf, RSUM_SIZE as u8)?;
             }
 
             // Reduce rsum for lookup to match rsum_bytes of block info
@@ -457,7 +477,7 @@ fn rs_get_patch_instructions(
                 // Found some blocks wich match the rsum of the current buffer.
                 //debug!("Matching rsum");
                 // Calculate md4 checksum of current buffer and reduce it to checksum_bytes.
-                let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8);
+                let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8)?;
                 let checksum = &full_checksum[0..checksum_bytes];
                 let block_infos = entry.unwrap().get(&checksum);
                 checksum_lookups += 1;
@@ -537,24 +557,24 @@ fn rs_get_patch_instructions(
     let mut pos: u64 = 0;
     for inst in &patch_instructions {
         if inst.target_offset != pos {
-            panic!("Gap in instructions: {} <> {}", pos, inst.target_offset);
+            return Err(PyRuntimeError::new_err(format!(
+                "Gap in instructions: {} <> {}",
+                pos, inst.target_offset
+            )));
         }
         pos += inst.size as u64;
     }
     if pos != zsync_file_info.length {
-        panic!(
+        return Err(PyRuntimeError::new_err(format!(
             "Sum of instructions sizes {} does not match file info length {}",
             pos, zsync_file_info.length
-        );
+        )));
     }
 
     Ok(patch_instructions)
 }
 
-fn _create_zsync_info(
-    file_path: PathBuf,
-    legacy_mode: bool,
-) -> Result<ZsyncFileInfo, Box<dyn std::error::Error>> {
+fn _create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> Result<ZsyncFileInfo, PyErr> {
     let metadata = file_path.metadata()?;
     let size = metadata.len();
     let mtime: DateTime<Utc> = metadata.modified()?.into();
@@ -622,37 +642,19 @@ fn _create_zsync_info(
 
 #[pyfunction]
 fn rs_create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> PyResult<ZsyncFileInfo> {
-    let zsync_file_info = _create_zsync_info(file_path, legacy_mode).unwrap();
+    let zsync_file_info = _create_zsync_info(file_path, legacy_mode)?;
     Ok(zsync_file_info)
-}
-
-#[pyfunction]
-fn rs_create_zsync_file(
-    file_path: PathBuf,
-    zsync_file_path: PathBuf,
-    legacy_mode: bool,
-) -> PyResult<()> {
-    let zsync_file_info = _create_zsync_info(file_path, legacy_mode).unwrap();
-    _write_zsync_file(zsync_file_info, zsync_file_path)?;
-    Ok(())
-}
-
-#[pyfunction]
-fn rs_write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -> PyResult<()> {
-    _write_zsync_file(zsync_file_info, zsync_file_path)?;
-    Ok(())
 }
 
 fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -> PyResult<()> {
     info!("Writing zsync file {:?}", zsync_file_path);
     if zsync_file_path.is_file() {
-        remove_file(&zsync_file_path).unwrap();
+        remove_file(&zsync_file_path)?;
     }
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
-        .open(zsync_file_path)
-        .unwrap();
+        .open(zsync_file_path)?;
     file.write_all(format!("zsync: {}\n", zsync_file_info.zsync.trim()).as_bytes())?;
     if zsync_file_info.producer.trim() != "" {
         file.write_all(format!("Producer: {}\n", zsync_file_info.producer.trim()).as_bytes())?;
@@ -690,7 +692,24 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
     Ok(())
 }
 
-fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn std::error::Error>> {
+#[pyfunction]
+fn rs_create_zsync_file(
+    file_path: PathBuf,
+    zsync_file_path: PathBuf,
+    legacy_mode: bool,
+) -> PyResult<()> {
+    let zsync_file_info = _create_zsync_info(file_path, legacy_mode)?;
+    _write_zsync_file(zsync_file_info, zsync_file_path)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn rs_write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -> PyResult<()> {
+    _write_zsync_file(zsync_file_info, zsync_file_path)?;
+    Ok(())
+}
+
+fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
     let file = File::open(zsync_file_path)?;
     let mut zsync_file_info = ZsyncFileInfo {
         zsync: "".to_string(),
@@ -729,35 +748,74 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
             } else if option == "url" {
                 zsync_file_info.url = value;
             } else if option == "sha-1" {
-                zsync_file_info.sha1 = hex::decode(value).unwrap().try_into().unwrap();
+                zsync_file_info.sha1 = match hex::decode(value) {
+                    Ok(val) => val.try_into().map_err(|e| {
+                        PyValueError::new_err(format!("Invalid SHA-1 value: {:?}", e))
+                    })?,
+                    Err(error) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid SHA-1 value: {}",
+                            error
+                        )));
+                    }
+                };
             } else if option == "sha-256" {
-                zsync_file_info.sha256 = hex::decode(value).unwrap().try_into().unwrap();
+                zsync_file_info.sha256 = match hex::decode(value) {
+                    Ok(val) => val.try_into().map_err(|e| {
+                        PyValueError::new_err(format!("Invalid SHA-256 value: {:?}", e))
+                    })?,
+                    Err(error) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid SHA-256 value: {}",
+                            error
+                        )));
+                    }
+                };
             } else if option == "mtime" {
-                zsync_file_info.mtime = DateTime::parse_from_rfc2822(value.as_str())
-                    .unwrap()
-                    .with_timezone(&Utc);
+                zsync_file_info.mtime = match DateTime::parse_from_rfc2822(value.as_str()) {
+                    Ok(val) => val.with_timezone(&Utc),
+                    Err(error) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid MTime value: {}",
+                            error
+                        )));
+                    }
+                };
             } else if option == "blocksize" {
                 zsync_file_info.block_size = value.parse()?;
             } else if option == "length" {
                 zsync_file_info.length = value.parse()?;
             } else if option == "hash-lengths" {
-                let mut hash_splitter = value.splitn(3, ",");
-                zsync_file_info.seq_matches = hash_splitter.next().unwrap().parse()?;
-                zsync_file_info.rsum_bytes = hash_splitter.next().unwrap().parse()?;
-                zsync_file_info.checksum_bytes = hash_splitter.next().unwrap().parse()?;
+                let hash_splitter = value.split(",");
+                let val: Vec<&str> = hash_splitter.collect();
+                if val.len() != 3 {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid Hash-Lengths value: {}",
+                        value
+                    )));
+                }
+                zsync_file_info.seq_matches = val[0].parse()?;
+                zsync_file_info.rsum_bytes = val[1].parse()?;
+                zsync_file_info.checksum_bytes = val[2].parse()?;
                 if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
-                    panic!("seq_matches out of range: {}", zsync_file_info.seq_matches);
+                    return Err(PyValueError::new_err(format!(
+                        "seq_matches out of range: {}",
+                        zsync_file_info.seq_matches
+                    )));
                 }
                 if zsync_file_info.rsum_bytes < 1 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
-                    panic!("rsum_bytes out of range: {}", zsync_file_info.rsum_bytes);
+                    return Err(PyValueError::new_err(format!(
+                        "rsum_bytes out of range: {}",
+                        zsync_file_info.rsum_bytes
+                    )));
                 }
                 if zsync_file_info.checksum_bytes < 3
                     || zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8
                 {
-                    panic!(
+                    return Err(PyValueError::new_err(format!(
                         "checksum_bytes out of range: {}",
                         zsync_file_info.checksum_bytes
-                    );
+                    )));
                 }
             }
         }
@@ -796,7 +854,7 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, Box<dyn s
 
 #[pyfunction]
 fn rs_read_zsync_file(zsync_file_path: PathBuf) -> PyResult<ZsyncFileInfo> {
-    Ok(_read_zsync_file(zsync_file_path).unwrap())
+    Ok(_read_zsync_file(zsync_file_path)?)
 }
 
 /// A Python module implemented in Rust.
