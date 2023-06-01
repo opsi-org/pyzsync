@@ -56,7 +56,7 @@ class FileRangeReader(BytesIO):
 		bytes_needed = size
 		if not bytes_needed:
 			bytes_needed = self.ranges[self.range_index].end - self.range_pos
-			bytes_needed += sum([r.end - r.start + 1 for r in self.ranges[self.range_index + 1 :]])
+			bytes_needed += sum(r.end - r.start + 1 for r in self.ranges[self.range_index + 1 :])
 		data = b""
 		with self.file.open("rb") as file:
 			while bytes_needed != 0:

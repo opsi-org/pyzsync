@@ -531,7 +531,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha256 == zsync_info.sha256
 
-	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
+	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 75
@@ -604,7 +604,7 @@ def test_patch_file_http_reader(tmp_path: Path) -> None:
 		assert remote_file.read_bytes() == local_file.read_bytes()
 		assert sha256 == zsync_info.sha256
 
-	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
+	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 53
@@ -655,7 +655,7 @@ def test_patch_tar(tmp_path: Path) -> None:
 	sha1 = patch_file(local_file, instructions, fetch_function)
 	assert sha1 == zsync_info.sha1
 
-	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
+	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) >= 86
@@ -710,7 +710,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	assert sha1 == zsync_info.sha1
 
-	local_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
+	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
 	assert round(speedup) == 75

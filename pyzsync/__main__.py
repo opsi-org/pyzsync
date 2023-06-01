@@ -70,7 +70,7 @@ def main() -> None:
 
 		local_file = Path(Path(zsync_info.filename).name).absolute()
 		instructions = get_patch_instructions(zsync_info, local_file)
-		remote_bytes = sum([i.size for i in instructions if i.source == SOURCE_REMOTE])
+		remote_bytes = sum(i.size for i in instructions if i.source == SOURCE_REMOTE)
 		ratio = (zsync_info.length - remote_bytes) * 100 / zsync_info.length
 		print(f"Local file {local_file} contains {ratio:.2f}% of data")
 
@@ -94,7 +94,7 @@ def main() -> None:
 		file2 = Path(args.file[1])
 		zsync_info = create_zsync_info(file1)
 		instructions = get_patch_instructions(zsync_info, file2)
-		file2_bytes = sum([i.size for i in instructions if i.source != SOURCE_REMOTE])
+		file2_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 		ratio = file2_bytes * 100 / zsync_info.length
 		print(f"{file2} contains {ratio:.2f}% of data to create {file1}")
 
