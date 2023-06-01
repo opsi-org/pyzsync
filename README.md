@@ -16,7 +16,7 @@ poetry run pytest -vv
 - install toolchain (linux)
 
 ```
-rustup toolchain install sbeta-x86_64-unknown-linux-gnu
+rustup toolchain install beta-x86_64-unknown-linux-gnu
 
 ```
 ## Build release
