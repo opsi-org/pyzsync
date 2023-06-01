@@ -3,6 +3,7 @@
 # License: AGPL-3.0
 
 import hashlib
+import platform
 import shutil
 import socket
 import time
@@ -765,6 +766,9 @@ def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
 
 
 def test_errors(tmp_path: Path) -> None:
+	# Windows error messages are localized
+	is_windows = platform.system().lower() == "windows"
+
 	some_file = tmp_path / "some_file"
 	some_file.write_bytes(b"data")
 	some_zsync_file = tmp_path / "some_file.zsync"
@@ -786,16 +790,16 @@ def test_errors(tmp_path: Path) -> None:
 	with pytest.raises(ValueError, match="checksum_bytes out of range"):
 		calc_block_infos(file=some_file, block_size=2048, checksum_bytes=33)
 
-	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+	with pytest.raises(FileNotFoundError, match="" if is_windows else "No such file or directory"):
 		calc_block_infos(file=Path("nonexistent"), block_size=2048)
 
-	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+	with pytest.raises(FileNotFoundError, match="" if is_windows else "No such file or directory"):
 		create_zsync_info(Path("nonexistent"))
 
-	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+	with pytest.raises(FileNotFoundError, match="" if is_windows else "No such file or directory"):
 		create_zsync_file(Path("nonexistent"), tmp_path / "some.zsync")
 
-	with pytest.raises(FileNotFoundError, match="No such file or directory"):
+	with pytest.raises(FileNotFoundError, match="" if is_windows else "No such file or directory"):
 		write_zsync_file(zsync_info=some_zsync_info, zsync_file=Path("/tmp/no/such/path"))
 
 	zsync_file = tmp_path / "fail.zsync"
