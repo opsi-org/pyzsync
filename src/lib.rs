@@ -385,6 +385,7 @@ fn rs_calc_block_infos(
 fn rs_get_patch_instructions(
     zsync_file_info: ZsyncFileInfo,
     file_paths: Vec<PathBuf>,
+    py: Python<'_>,
 ) -> PyResult<Vec<PatchInstruction>> {
     // Get a list of instructions, based on the zsync file info,
     // to build the remote file, using as much as possible data from the local file.
@@ -454,6 +455,9 @@ fn rs_get_patch_instructions(
             if pos >= size {
                 break;
             }
+            // Let the Python interpreter a chance to process signals
+            py.check_signals()?;
+
             // Fill the buffer with chars until the block size is reached.
             let add_chars = zsync_file_info.block_size - buf.len() as u32;
             while buf.len() < zsync_file_info.block_size as usize {
@@ -527,6 +531,9 @@ fn rs_get_patch_instructions(
     let mut end_offset: i64 = -1;
     let mut iter = zsync_file_info.block_info.iter().peekable();
     while let Some(block_info) = iter.next() {
+        // Let the Python interpreter a chance to process signals
+        py.check_signals()?;
+
         let is_last = iter.peek().is_none();
         if !block_ids_found.contains(&block_info.block_id) {
             let offset = block_info.offset as i64;
