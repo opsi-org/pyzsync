@@ -338,11 +338,11 @@ def write_zsync_file(zsync_info: ZsyncFileInfo, zsync_file: Path) -> None:
 	return rs_write_zsync_file(zsync_info, zsync_file)
 
 
-def create_zsync_file(file: Path, zsync_file: Path, *, legacy_mode: bool = False) -> None:
+def create_zsync_file(file: Path, zsync_file: Path, *, legacy_mode: bool = True) -> None:
 	return rs_create_zsync_file(file, zsync_file, legacy_mode)
 
 
-def create_zsync_info(file: Path, *, legacy_mode: bool = False) -> ZsyncFileInfo:
+def create_zsync_info(file: Path, *, legacy_mode: bool = True) -> ZsyncFileInfo:
 	return rs_create_zsync_info(file, legacy_mode)
 
 
