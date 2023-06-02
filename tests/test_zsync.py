@@ -10,16 +10,14 @@ import time
 from collections import Counter
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
-from http.client import HTTPConnection
 from http.server import HTTPServer
-from io import BytesIO
 from pathlib import Path
 from random import randbytes
 from socketserver import ThreadingMixIn
 from statistics import mean
 from subprocess import run
 from threading import Thread
-from typing import Any, BinaryIO, Generator
+from typing import Any, BinaryIO, Generator, cast
 
 import pytest
 from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
@@ -29,6 +27,7 @@ from pyzsync import (
 	BlockInfo,
 	FileRangeReader,
 	HTTPRangeReader,
+	ProgressListener,
 	Range,
 	ZsyncFileInfo,
 	__version__,
@@ -67,7 +66,12 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 	thread.start()
 	try:
 		# Wait for server to start
-		time.sleep(3)
+		for _ in range(10):
+			with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:  # pylint: disable=dotted-import-in-loop
+				sock.settimeout(1)
+				res = sock.connect_ex(("127.0.0.1", port))
+				if res == 0:
+					break
 		yield port
 	finally:
 		server.socket.close()
@@ -75,7 +79,7 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 
 
 def test_version() -> None:
-	assert __version__ == "0.4.0"
+	assert __version__ == "0.5.0"
 
 
 def test_md4() -> None:
@@ -539,7 +543,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-def test_patch_file_http_ranges(tmp_path: Path) -> None:
+def test_patch_file_http(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -566,48 +570,46 @@ def test_patch_file_http_ranges(tmp_path: Path) -> None:
 	assert instructions[5].source != SOURCE_REMOTE
 	assert instructions[6].source == SOURCE_REMOTE
 
+	remote_bytes = sum(i.size for i in instructions if i.source == SOURCE_REMOTE)
 
-def test_patch_file_http_reader(tmp_path: Path) -> None:
-	# RangeRequestHandler does not support multiple ranges in one request!
-	remote_file = tmp_path / "remote"
-	remote_zsync_file = tmp_path / "remote.zsync"
-	local_file = tmp_path / "local"
+	class MyProgressListener(ProgressListener):
+		def __init__(self) -> None:
+			self.position = 0
+			self.total = 0
 
-	block_count = 10
-	block_size = 2048
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
-		for block_id in range(block_count):
-			block_data = randbytes(int(block_size / 2) if block_id == block_count - 1 else block_size)
-			rfile.write(block_data)
-			if block_id < 5:
-				lfile.write(block_data)
-
-	create_zsync_file(remote_file, remote_zsync_file)
-	zsync_info = read_zsync_file(remote_zsync_file)
-	instructions = get_patch_instructions(zsync_info, local_file)
-	# L:0, L:1, L:2, L:3, L:4, R:5-9
-	assert len(instructions) == 6
-	assert instructions[0].source != SOURCE_REMOTE
-	assert instructions[1].source != SOURCE_REMOTE
-	assert instructions[2].source != SOURCE_REMOTE
-	assert instructions[3].source != SOURCE_REMOTE
-	assert instructions[4].source != SOURCE_REMOTE
-	assert instructions[5].source == SOURCE_REMOTE
+		def progress_changed(self, reader: HTTPRangeReader, position: int, total: int, per_second: int) -> None:
+			self.position = position
+			self.total = total
+			print(f"{self.position}/{self.total} ({per_second/1000:.2f} kB/s)")
 
 	with http_server(tmp_path) as port:
 
-		def fetch_function(ranges: list[Range]) -> BinaryIO:
-			return HTTPRangeReader(f"http://localhost:{port}/remote", ranges)
+		progress_listener = MyProgressListener()
+		http_range_reader: HTTPRangeReader | None = None
 
-		sha256 = patch_file(local_file, instructions, fetch_function, return_hash="sha256")
+		def range_reader_factory(ranges: list[Range]) -> HTTPRangeReader:
+			nonlocal http_range_reader
+			# RangeRequestHandler does not support multiple ranges in one request!
+			http_range_reader = HTTPRangeReader(f"http://localhost:{port}/remote", ranges, max_ranges_per_request=1)
+			http_range_reader.register_progress_listener(progress_listener)
+			return http_range_reader
+
+		sha256 = patch_file(local_file, instructions, range_reader_factory, return_hash="sha256")
+
+		assert progress_listener.total == remote_bytes
+		assert progress_listener.position == progress_listener.total
+
+		assert isinstance(http_range_reader, HTTPRangeReader)
+		http_range_reader = cast(HTTPRangeReader, http_range_reader)
+		http_range_reader.unregister_progress_listener(progress_listener)
+
 		assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
 		assert remote_file.read_bytes() == local_file.read_bytes()
 		assert sha256 == zsync_info.sha256
 
-	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
-	speedup = local_bytes * 100 / zsync_info.length
+	speedup = (zsync_info.length - remote_bytes) * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
-	assert round(speedup) == 53
+	assert round(speedup) == 42
 
 	shutil.rmtree(tmp_path)
 
