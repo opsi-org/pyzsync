@@ -191,7 +191,6 @@ class HTTPRangeReader(RangeReader):
 		self._boundary = b""
 		self._response: Any = None
 		self._session: Any = None
-		self._request()
 
 	@property
 	def url(self) -> str:
