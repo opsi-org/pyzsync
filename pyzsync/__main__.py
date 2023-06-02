@@ -15,6 +15,7 @@ from pyzsync import (
 	HTTPRangeReader,
 	ProgressListener,
 	Range,
+	RangeReader,
 	create_zsync_file,
 	create_zsync_info,
 	get_patch_instructions,
@@ -43,7 +44,7 @@ def zsync(url: str) -> None:
 	with TemporaryDirectory() as temp_dir:
 		zsync_file = Path(temp_dir) / url_obj.path.split("/")[-1]
 		with open(zsync_file, "wb") as file:
-			last_completed = 0
+			last_completed = 0.0
 			while position < total_size:
 				data = response.read(65536)
 				if not data:
@@ -74,9 +75,9 @@ def zsync(url: str) -> None:
 
 	class PrintingProgressListener(ProgressListener):
 		def __init__(self) -> None:
-			self.last_completed = 0
+			self.last_completed = 0.0
 
-		def progress_changed(self, reader: HTTPRangeReader, position: int, total: int, per_second: int) -> None:
+		def progress_changed(self, reader: RangeReader, position: int, total: int, per_second: int) -> None:
 			completed = round(position * 100 / total, 1)
 			if completed == self.last_completed:
 				return

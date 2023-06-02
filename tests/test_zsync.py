@@ -29,6 +29,7 @@ from pyzsync import (
 	HTTPRangeReader,
 	ProgressListener,
 	Range,
+	RangeReader,
 	ZsyncFileInfo,
 	__version__,
 	calc_block_infos,
@@ -577,7 +578,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			self.position = 0
 			self.total = 0
 
-		def progress_changed(self, reader: HTTPRangeReader, position: int, total: int, per_second: int) -> None:
+		def progress_changed(self, reader: RangeReader, position: int, total: int, per_second: int) -> None:
 			self.position = position
 			self.total = total
 			print(f"{self.position}/{self.total} ({per_second/1000:.2f} kB/s)")

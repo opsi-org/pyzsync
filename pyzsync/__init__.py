@@ -13,7 +13,7 @@ from io import BytesIO
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Literal, NamedTuple, cast
+from typing import Any, Callable, Iterator, Literal, NamedTuple, cast
 from urllib.parse import urlparse
 
 from pyzsync.pyzsync import (
@@ -44,26 +44,26 @@ logger = getLogger("pyzsync")
 class CaseInsensitiveDict(MutableMapping):
 	"""A case-insensitive ``dict``-like object"""
 
-	def __init__(self, data=None, **kwargs):
-		self._store = {}
+	def __init__(self, data: dict[str, Any] | None = None, **kwargs: Any) -> None:
+		self._store: dict[str, tuple[str, Any]] = {}
 		self.update(data or {}, **kwargs)
 
-	def __setitem__(self, key, value):
+	def __setitem__(self, key: str, value: Any) -> None:
 		self._store[key.lower()] = (key, value)
 
-	def __getitem__(self, key):
+	def __getitem__(self, key: str) -> Any:
 		return self._store[key.lower()][1]
 
-	def __delitem__(self, key):
+	def __delitem__(self, key: str) -> None:
 		del self._store[key.lower()]
 
-	def __iter__(self):
+	def __iter__(self) -> Iterator[str]:
 		return (cased_key for cased_key, _ in self._store.values())
 
-	def __len__(self):
+	def __len__(self) -> int:
 		return len(self._store)
 
-	def __repr__(self):
+	def __repr__(self) -> str:
 		return str(dict(self.items()))
 
 
@@ -75,7 +75,7 @@ class Range(NamedTuple):
 
 
 class ProgressListener:
-	def progress_changed(reader: HTTPRangeReader, position: int, total: int, per_second: int):
+	def progress_changed(self, reader: RangeReader, position: int, total: int, per_second: int) -> None:
 		pass
 
 
@@ -99,7 +99,7 @@ class RangeReader(BytesIO):
 			if listener in self._progress_listeners:
 				self._progress_listeners.remove(listener)
 
-	def _call_progress_listeners(self):
+	def _call_progress_listeners(self) -> None:
 		now = time.time()
 		per_second = (self.total_position - self._ps_last_position) / (now - self._ps_last_time)
 		self.per_second = int(self.per_second * 0.7 + per_second * 0.3)
@@ -230,7 +230,8 @@ class HTTPRangeReader(RangeReader):
 		logger.debug("Received response: %r, headers: %r", response_code, response_headers)
 		if response_code < 200 or response_code > 299:
 			raise RuntimeError(
-				f"Failed to fetch ranges from {self._url.geturl()}: {response_code} - {self._read_response_data(self._chunk_size)}"
+				f"Failed to fetch ranges from {self._url.geturl()}: "
+				f"{response_code} - {self._read_response_data(self._chunk_size).decode('utf-8', 'replace')}"
 			)
 
 		content_range = response_headers.get("Content-Range")
@@ -275,7 +276,7 @@ class HTTPRangeReader(RangeReader):
 					part_headers = CaseInsensitiveDict()
 					for header in self._raw_data[idx:idx2].split(b"\r\n"):
 						if b":" in header:
-							name, value = header.split(b":", 1)
+							name, value = header.decode("utf-8", "replace").split(":", 1)
 							part_headers[name.strip()] = value.strip()
 					logger.debug("Multipart headers: %r", part_headers)
 
