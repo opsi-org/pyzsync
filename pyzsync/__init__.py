@@ -101,7 +101,8 @@ class RangeReader(BytesIO):
 
 	def _call_progress_listeners(self) -> None:
 		now = time.time()
-		per_second = (self.total_position - self._ps_last_position) / (now - self._ps_last_time)
+		elapsed = now - self._ps_last_time
+		per_second = (self.total_position - self._ps_last_position) / elapsed if elapsed else 0.0
 		self.per_second = int(self.per_second * 0.7 + per_second * 0.3)
 		self._last_time = now
 
