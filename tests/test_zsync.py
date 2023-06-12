@@ -510,7 +510,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	assert remote_file.stat().st_size == file_size
 
 	# Create zsync file
-	create_zsync_file(remote_file, remote_zsync_file)
+	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 
 	# Start sync
 	files = [local_file1, local_file2, local_file3]
@@ -558,7 +558,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			if block_id in (1, 2, 3, 7):
 				lfile.write(block_data)
 
-	create_zsync_file(remote_file, remote_zsync_file)
+	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 	zsync_info = read_zsync_file(remote_zsync_file)
 	instructions = get_patch_instructions(zsync_info, local_file)
 	# R:0, L:1, L:2, L:3, R:4-6, L:7, R:8-9
