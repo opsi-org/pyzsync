@@ -79,10 +79,6 @@ def http_server(directory: Path) -> Generator[int, None, None]:
 		thread.join(3)
 
 
-def test_version() -> None:
-	assert __version__ == "0.6.1"
-
-
 def test_md4() -> None:
 	block = b"x" * 2048
 	assert md4(block) == bytes.fromhex("f3b20ba5cf00653e13fcf03f85bd0224")

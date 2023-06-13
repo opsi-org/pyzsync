@@ -184,7 +184,7 @@ class HTTPRangeReader(RangeReader):
 		self._request_index = -1
 		self._content_size = 0
 		self._content_position = 0
-		self._part_index = 0
+		self._part_index = -1
 		self._raw_data = b""
 		self._data = b""
 		self._in_body = False
@@ -228,11 +228,17 @@ class HTTPRangeReader(RangeReader):
 		logger.debug("Sending GET request with headers: %r", self._headers)
 		response_code, response_headers = self._send_request()
 		logger.debug("Received response: %r, headers: %r", response_code, response_headers)
+
 		if response_code < 200 or response_code > 299:
 			raise RuntimeError(
 				f"Failed to fetch ranges from {self._url.geturl()}: "
 				f"{response_code} - {self._read_response_data(self._chunk_size).decode('utf-8', 'replace')}"
 			)
+
+		content_length = response_headers.get("Content-Length")
+		if not content_length:
+			raise RuntimeError(f"Content-Length header missing in response to GET request {self._url.geturl()}: {response_headers:!r}")
+		self._content_size = int(content_length)
 
 		content_range = response_headers.get("Content-Range")
 		if content_range:
@@ -241,7 +247,6 @@ class HTTPRangeReader(RangeReader):
 			if ranges != self._requests[self._request_index]:
 				raise RuntimeError(f"Content-Range {content_range} does not match requested ranges {self._requests[self._request_index]}")
 
-		self._content_size = int(response_headers["Content-Length"])
 		ctype = response_headers["Content-Type"]
 		if ctype.startswith("multipart/byteranges"):
 			boundary = [p.split("=", 1)[1].strip() for p in ctype.split(";") if p.strip().startswith("boundary=")]
@@ -285,7 +290,10 @@ class HTTPRangeReader(RangeReader):
 						ranges = self._parse_content_range(content_range)
 						cur_range = self._requests[self._request_index][self._part_index]
 						if ranges[0] != cur_range:
-							raise RuntimeError(f"Content-Range {content_range} does not match range {cur_range}")
+							raise RuntimeError(
+								f"Content-Range {content_range} of part #{self._part_index} does not match range {cur_range} "
+								f"(requested ranges: {self._requests[self._request_index]})"
+							)
 
 					self._raw_data = self._raw_data[idx2 + 4 :]
 					self._in_body = True
