@@ -9,11 +9,10 @@ import time
 from collections.abc import MutableMapping
 from contextlib import ExitStack
 from http.client import HTTPConnection, HTTPSConnection
-from io import BytesIO
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Iterator, Literal, NamedTuple, cast
+from typing import Any, Callable, Generator, Iterator, Literal, NamedTuple, cast
 from urllib.parse import urlparse
 
 from pyzsync.pyzsync import (
@@ -74,15 +73,25 @@ class Range(NamedTuple):
 	end: int
 
 
+class Chunk(NamedTuple):
+	"""A chunk of data with a range info"""
+
+	range: Range
+	data: bytes
+
+
 class ProgressListener:
 	def progress_changed(self, reader: RangeReader, position: int, total: int, per_second: int) -> None:
 		pass
 
 
-class RangeReader(BytesIO):
+class RangeReader:
+	chunk_size = 65536
+
 	def __init__(self, ranges: list[Range]) -> None:
+		self._ranges = ranges
 		self.total_position = 0
-		self.total_size = sum(r.end - r.start + 1 for r in ranges)
+		self.total_size = sum(r.end - r.start + 1 for r in self._ranges)
 		self.per_second = 0
 		self._ps_last_time = time.time()
 		self._ps_last_position = 0
@@ -113,7 +122,11 @@ class RangeReader(BytesIO):
 				except Exception as err:
 					logger.warning(err)
 
-	def read(self, size: int | None = None) -> bytes:
+	def read(self) -> Generator[Chunk, None, None]:
+		"""
+		Read ranges in chunks.
+		The generated chunks are not necessarily ordered by start offset.
+		"""
 		raise NotImplementedError("Not implemented")
 
 
@@ -122,38 +135,32 @@ class FileRangeReader(RangeReader):
 
 	def __init__(self, file: Path, ranges: list[Range]) -> None:
 		super().__init__(ranges)
+		self._file = file
 
-		self.file = file
-		self.ranges = sorted(ranges, key=lambda r: r.start)
-		self.range_index = 0
-		self.range_pos = self.ranges[0].start
+	def read(self) -> Generator[Chunk, None, None]:
+		with self._file.open("rb") as file:
+			for rng in self._ranges:
+				file.seek(rng.start)
+				start = rng.start
+				end = rng.end
+				while start < rng.end:
+					read_size = end - start + 1
+					if read_size > self.chunk_size:
+						read_size = self.chunk_size
 
-	def read(self, size: int | None = None) -> bytes:
-		bytes_needed = size
-		if not bytes_needed:
-			bytes_needed = self.total_size - self.total_position
+					data = file.read(read_size)
+					data_len = len(data)
+					if read_size < data_len:
+						raise RuntimeError(f"Failed to read bytes {start}-{end} from {self._file}")
 
-		data = b""
-		with self.file.open("rb") as file:
-			while bytes_needed != 0:
-				range = self.ranges[self.range_index]
-				range_size = range.end + 1 - self.range_pos
-				read_size = bytes_needed
-				start = self.range_pos
-				if range_size <= read_size:
-					read_size = range_size
-					if self.range_index < len(self.ranges) - 1:
-						self.range_index += 1
-						self.range_pos = self.ranges[self.range_index].start
-				else:
-					self.range_pos += read_size
-				file.seek(start)
-				data += file.read(read_size)
-				bytes_needed -= read_size
+					yield Chunk(range=Range(start, end), data=data)
+					self.total_position += data_len
+					self._call_progress_listeners()
 
-		self.total_position += len(data)
-
-		self._call_progress_listeners()
+					start += data_len
+					end += data_len
+					if end > rng.end:
+						end = rng.end
 
 		return data
 
@@ -179,14 +186,10 @@ class HTTPRangeReader(RangeReader):
 		self._read_timeout = read_timeout
 
 		# Max header size ~4k
-		ranges = sorted(ranges, key=lambda r: r.start)
-		self._requests = [ranges[x : x + max_ranges_per_request] for x in range(0, len(ranges), max_ranges_per_request)]
+		self._requests = [self._ranges[x : x + max_ranges_per_request] for x in range(0, len(self._ranges), max_ranges_per_request)]
 		self._request_index = -1
-		self._content_size = 0
-		self._content_position = 0
+		self._content_range: Range | None = None
 		self._part_index = -1
-		self._raw_data = b""
-		self._data = b""
 		self._in_body = False
 		self._boundary = b""
 		self._response: Any = None
@@ -206,18 +209,19 @@ class HTTPRangeReader(RangeReader):
 	def _read_response_data(self, size: int | None = None) -> bytes:
 		return self._response.read(size)
 
-	def _parse_content_range(self, content_range: str) -> list[Range]:
+	def _parse_content_range(self, content_range: str) -> Range:
 		unit, range = content_range.split(" ", 1)
 		if unit.strip() != "bytes":
 			raise RuntimeError(f"Invalid Content-Range unit {unit}")
 		try:
-			return [Range(int(r.split("-")[0].strip()), int(r.split("-")[1].strip())) for r in range.split("/", 1)[0].split(",")]
+			start_end = range.split("/", 1)[0].split("-")
+			return Range(int(start_end[0].strip()), int(start_end[1].strip()))
 		except Exception as err:
 			raise RuntimeError(f"Failed to parse Content-Range: {err}") from err
 
 	def _request(self) -> None:
 		self._request_index += 1
-		self._content_position = 0
+		self._content_range = None
 		self._part_index = -1
 		self._boundary = b""
 		self._in_body = True
@@ -235,18 +239,6 @@ class HTTPRangeReader(RangeReader):
 				f"{response_code} - {self._read_response_data(self._chunk_size).decode('utf-8', 'replace')}"
 			)
 
-		content_length = response_headers.get("Content-Length")
-		if not content_length:
-			raise RuntimeError(f"Content-Length header missing in response to GET request {self._url.geturl()}: {response_headers:!r}")
-		self._content_size = int(content_length)
-
-		content_range = response_headers.get("Content-Range")
-		if content_range:
-			# Content-Range can also be placed in multipart header
-			ranges = self._parse_content_range(content_range)
-			if ranges != self._requests[self._request_index]:
-				raise RuntimeError(f"Content-Range {content_range} does not match requested ranges {self._requests[self._request_index]}")
-
 		ctype = response_headers["Content-Type"]
 		if ctype.startswith("multipart/byteranges"):
 			boundary = [p.split("=", 1)[1].strip() for p in ctype.split(";") if p.strip().startswith("boundary=")]
@@ -254,68 +246,89 @@ class HTTPRangeReader(RangeReader):
 				raise RuntimeError("No boundary found in Content-Type")
 			self._boundary = boundary[0].encode("ascii")
 			self._in_body = False
+			# Content-Range will be read from multipart header
+		else:
+			content_range = response_headers.get("Content-Range")
+			if not content_range:
+				raise RuntimeError("Content-Range header missing")
 
-	def read(self, size: int | None = None) -> bytes:
-		if not size:
-			size = self.total_size - self.total_position
+			self._content_range = self._parse_content_range(content_range)
+			if self._content_range != self._requests[self._request_index][0]:
+				raise RuntimeError(f"Content-Range {content_range} does not match requested ranges {self._requests[self._request_index]}")
 
-		return_data = b""
-		while len(self._data) < size:
-			if self._content_position >= self._content_size and self._request_index < len(self._requests) - 1:
+	def read(self) -> Generator[Chunk, None, None]:
+		raw_data = b""
+		range_pos = -1
+		while True:
+			if not self._content_range or range_pos > self._content_range.end:
+				if self._request_index >= len(self._requests) - 1:
+					return
 				self._request()
+				raw_data = b""
+				range_pos = -1
 
-			chunk = self._read_response_data(self._chunk_size)
-			self._content_position += len(chunk)
+			raw_data += self._read_response_data(self._chunk_size)
+			data = b""
 
 			if self._boundary:
-				self._raw_data += chunk
 				if not self._in_body:
-					idx = self._raw_data.find(b"\r\n--" + self._boundary)
+					idx = raw_data.find(b"\r\n--" + self._boundary)
 					if idx == -1:
 						raise RuntimeError("Failed to read multipart")
-					idx2 = self._raw_data.find(b"\r\n\r\n", len(self._boundary) + 4)
+					idx2 = raw_data.find(b"\r\n\r\n", len(self._boundary) + 4)
 					if idx2 == -1:
 						raise RuntimeError("Failed to read multipart")
 
 					self._part_index += 1
 					part_headers = CaseInsensitiveDict()
-					for header in self._raw_data[idx:idx2].split(b"\r\n"):
+					for header in raw_data[idx:idx2].split(b"\r\n"):
 						if b":" in header:
 							name, value = header.decode("utf-8", "replace").split(":", 1)
 							part_headers[name.strip()] = value.strip()
 					logger.debug("Multipart headers: %r", part_headers)
 
+					# https://datatracker.ietf.org/doc/html/rfc7233#section-4.1
+					#   When multiple ranges are requested, a server MAY coalesce any of the
+					#   ranges that overlap, or that are separated by a gap that is smaller
+					#   than the overhead of sending multiple parts, regardless of the order
+					#   in which the corresponding byte-range-spec appeared in the received
+					#   Range header field.
 					content_range = part_headers.get("Content-Range")
-					if content_range:
-						ranges = self._parse_content_range(content_range)
-						cur_range = self._requests[self._request_index][self._part_index]
-						if ranges[0] != cur_range:
-							raise RuntimeError(
-								f"Content-Range {content_range} of part #{self._part_index} does not match range {cur_range} "
-								f"(requested ranges: {self._requests[self._request_index]})"
-							)
+					if not content_range:
+						raise RuntimeError(f"Content-Range header missing in part #{self._part_index}")
 
-					self._raw_data = self._raw_data[idx2 + 4 :]
+					self._content_range = self._parse_content_range(content_range)
+					raw_data = raw_data[idx2 + 4 :]
 					self._in_body = True
 
-				idx = self._raw_data.find(b"\r\n--" + self._boundary)
+				idx = raw_data.find(b"\r\n--" + self._boundary)
 				if idx == -1:
-					self._data += self._raw_data
-					self._raw_data = b""
+					data = raw_data
+					raw_data = b""
 				else:
-					self._data += self._raw_data[:idx]
-					self._raw_data = self._raw_data[idx:]
+					data = raw_data[:idx]
+					raw_data = raw_data[idx:]
 					self._in_body = False
 			else:
-				self._data += chunk
+				data = raw_data
+				raw_data = b""
 
-		return_data = self._data[:size]
-		self._data = self._data[size:]
-		self.total_position += len(return_data)
+			assert isinstance(self._content_range, Range)
+			if range_pos == -1:
+				range_pos = self._content_range.start
 
-		self._call_progress_listeners()
+			data_len = len(data)
+			if not data:
+				raise RuntimeError("Failed to read data")
+			chunk = Chunk(range=Range(range_pos, range_pos + data_len - 1), data=data)
+			yield chunk
 
-		return return_data
+			range_pos += data_len
+			self.total_position += data_len
+			if self.total_position > self.total_size:
+				self.total_position = self.total_size
+
+			self._call_progress_listeners()
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
@@ -381,7 +394,6 @@ def patch_file(
 	:param return_hash: Type of hash to return. If `None` no hash will be returned.
 	:return: Hash of patched file.
 	"""
-	chunk_size = 65536
 	if not isinstance(files, list):
 		files = [files]
 
@@ -395,42 +407,38 @@ def patch_file(
 		if files[idx] == tmp_file:
 			raise ValueError(f"Invalid filename {files[idx]}")
 
-	_hash = None
-	if return_hash:
-		_hash = hashlib.new(return_hash)
-
 	remote_ranges: list[Range] = [Range(i.source_offset, i.source_offset + i.size - 1) for i in instructions if i.source == SOURCE_REMOTE]
 	range_reader: RangeReader | None = None
 	if remote_ranges:
 		range_reader = cast(RangeReader, range_reader_factory(remote_ranges))
 
+	chunk_size = 65536
 	with ExitStack() as stack:
 		fhs = [stack.enter_context(open(file, "rb")) for file in files]
 		with open(tmp_file, "wb") as fht:
+			# lseek() allows the file offset to be set beyond the end of the
+			# file (but this does not change the size of the file).  If data is
+			# later written at this point, subsequent reads of the data in the
+			# gap (a "hole") return null bytes ('\0') until data is actually
+			# written into the gap.
 			for instruction in instructions:
-				bytes_read = 0
 				if instruction.source == SOURCE_REMOTE:
-					logger.debug(
-						"Processing remote instruction %d/%d size=%d",
-						instruction.source_offset,
-						instruction.source_offset + instruction.size - 1,
-						instruction.size,
-					)
-				if instruction.source != SOURCE_REMOTE:
-					fhs[instruction.source].seek(instruction.source_offset)
+					continue
+				bytes_read = 0
 				while bytes_read < instruction.size:
 					read_size = instruction.size - bytes_read
 					if read_size > chunk_size:
 						read_size = chunk_size
-					if instruction.source == SOURCE_REMOTE:
-						assert range_reader
-						data = range_reader.read(read_size)
-					else:
-						data = fhs[instruction.source].read(read_size)
+					fhs[instruction.source].seek(instruction.source_offset)
+					data = fhs[instruction.source].read(read_size)
+					fht.seek(instruction.target_offset)
 					fht.write(data)
-					if _hash:
-						_hash.update(data)
 					bytes_read += len(data)
+
+			for chunk in range_reader.read():
+				fht.seek(chunk.range.start)
+				fht.write(chunk.data)
+
 	if output_file.exists():
 		output_file.unlink()
 	tmp_file.rename(output_file)
@@ -440,6 +448,11 @@ def patch_file(
 			if file.exists() and file != output_file:
 				file.unlink()
 
-	if _hash:
-		return _hash.digest()
-	return b""
+	if not return_hash:
+		return b""
+
+	_hash = hashlib.new(return_hash)
+	with open(output_file, "rb") as fht:
+		while data := fht.read(chunk_size):
+			_hash.update(data)
+	return _hash.digest()

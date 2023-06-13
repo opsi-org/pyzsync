@@ -540,7 +540,11 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
-def test_patch_file_http(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+	"ordered_chunks",
+	(True, False),
+)
+def test_patch_file_http(tmp_path: Path, ordered_chunks: bool) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
@@ -587,12 +591,12 @@ def test_patch_file_http(tmp_path: Path) -> None:
 		def range_reader_factory(ranges: list[Range]) -> HTTPRangeReader:
 			nonlocal http_range_reader
 			# RangeRequestHandler does not support multiple ranges in one request!
+			ranges = sorted(ranges, key=lambda r: r.start, reverse=not ordered_chunks)
 			http_range_reader = HTTPRangeReader(f"http://localhost:{port}/remote", ranges, max_ranges_per_request=1)
 			http_range_reader.register_progress_listener(progress_listener)
 			return http_range_reader
 
 		sha256 = patch_file(local_file, instructions, range_reader_factory, return_hash="sha256")
-
 		assert progress_listener.total == remote_bytes
 		assert progress_listener.position == progress_listener.total
 
@@ -600,9 +604,10 @@ def test_patch_file_http(tmp_path: Path) -> None:
 		http_range_reader = cast(HTTPRangeReader, http_range_reader)
 		http_range_reader.unregister_progress_listener(progress_listener)
 
+		assert remote_file.stat().st_size == local_file.stat().st_size
+		assert sha256 == zsync_info.sha256
 		assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
 		assert remote_file.read_bytes() == local_file.read_bytes()
-		assert sha256 == zsync_info.sha256
 
 	speedup = (zsync_info.length - remote_bytes) * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
