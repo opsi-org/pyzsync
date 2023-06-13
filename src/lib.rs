@@ -191,6 +191,15 @@ struct PatchInstruction {
 
 #[pymethods]
 impl PatchInstruction {
+    #[new]
+    fn new(source: i8, source_offset: u64, target_offset: u64, size: u64) -> Self {
+        PatchInstruction {
+            source: source,
+            source_offset: source_offset,
+            target_offset: target_offset,
+            size: size,
+        }
+    }
     #[getter]
     fn source(&self) -> PyResult<i8> {
         Ok(self.source)
@@ -206,6 +215,16 @@ impl PatchInstruction {
     #[getter]
     fn size(&self) -> PyResult<u64> {
         Ok(self.size)
+    }
+    fn __repr__(&self) -> String {
+        let mut src = format!("file#{}", self.source);
+        if self.source == SOURCE_REMOTE {
+            src = "remote".to_string();
+        }
+        format!(
+            "PatchInstruction(source={}, source_offset={}, size={}, target_offset={})",
+            src, self.source_offset, self.size, self.target_offset
+        )
     }
 }
 
