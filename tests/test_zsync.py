@@ -515,18 +515,18 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(ranges: list[Range]) -> RangeReader:
+	def range_reader_factory(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
 	output_file = tmp_path / "out"
 
-	sha1 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha1", delete_files=False)
+	sha1 = patch_file(files, instructions, range_reader_factory, output_file=output_file, return_hash="sha1", delete_files=False)
 	assert zsync_info.sha1 == hashlib.sha1(remote_file.read_bytes()).digest()
 	assert remote_file.stat().st_size == output_file.stat().st_size
 	assert remote_file.read_bytes() == output_file.read_bytes()
 	assert sha1 == zsync_info.sha1
 
-	sha256 = patch_file(files, instructions, fetch_function, output_file=output_file, return_hash="sha256", delete_files=True)
+	sha256 = patch_file(files, instructions, range_reader_factory, output_file=output_file, return_hash="sha256", delete_files=True)
 	assert zsync_info.sha256 == hashlib.sha256(remote_file.read_bytes()).digest()
 	assert remote_file.stat().st_size == output_file.stat().st_size
 	assert remote_file.read_bytes() == output_file.read_bytes()
@@ -653,10 +653,10 @@ def test_patch_tar(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(ranges: list[Range]) -> RangeReader:
+	def range_reader_factory(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
-	sha1 = patch_file(local_file, instructions, fetch_function)
+	sha1 = patch_file(local_file, instructions, range_reader_factory)
 	assert sha1 == zsync_info.sha1
 
 	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
@@ -707,10 +707,10 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	instructions = get_patch_instructions(zsync_info, local_file)
 
-	def fetch_function(ranges: list[Range]) -> RangeReader:
+	def range_reader_factory(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
-	sha1 = patch_file(local_file, instructions, fetch_function)
+	sha1 = patch_file(local_file, instructions, range_reader_factory)
 
 	assert sha1 == zsync_info.sha1
 
