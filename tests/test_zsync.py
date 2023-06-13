@@ -763,6 +763,31 @@ def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
 	shutil.rmtree(tmp_path)
 
 
+def test_create_zsync_file_multi_thread_no_crash(tmp_path: Path) -> None:
+	remote_file = tmp_path / "remotefile"
+	remote_zsync_file = tmp_path / "remotefile.zsync"
+
+	with open(remote_file, "wb") as rfile:
+		for _ in range(1_000):
+			rfile.write(randbytes(10_000))
+
+	def task():
+		time.sleep(0.1)
+		create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
+
+	threads = []
+	for _ in range(25):
+		thread = Thread(target=task)
+		thread.daemon = True
+		threads.append(thread)
+
+	for thread in threads:
+		thread.start()
+
+	for thread in threads:
+		thread.join(10)
+
+
 def test_errors(tmp_path: Path) -> None:
 	# Windows error messages are localized
 	is_windows = platform.system().lower() == "windows"
