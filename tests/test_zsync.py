@@ -771,7 +771,7 @@ def test_create_zsync_file_multi_thread_no_crash(tmp_path: Path) -> None:
 		for _ in range(1_000):
 			rfile.write(randbytes(10_000))
 
-	def task():
+	def task() -> None:
 		time.sleep(0.1)
 		create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 
