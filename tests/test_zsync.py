@@ -515,7 +515,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(ranges: list[Range]) -> BinaryIO:
+	def fetch_function(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
 	output_file = tmp_path / "out"
@@ -653,7 +653,7 @@ def test_patch_tar(tmp_path: Path) -> None:
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
 
-	def fetch_function(ranges: list[Range]) -> BinaryIO:
+	def fetch_function(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
 	sha1 = patch_file(local_file, instructions, fetch_function)
@@ -707,7 +707,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	instructions = get_patch_instructions(zsync_info, local_file)
 
-	def fetch_function(ranges: list[Range]) -> BinaryIO:
+	def fetch_function(ranges: list[Range]) -> RangeReader:
 		return FileRangeReader(remote_file, ranges)
 
 	sha1 = patch_file(local_file, instructions, fetch_function)

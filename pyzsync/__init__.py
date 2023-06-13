@@ -162,8 +162,6 @@ class FileRangeReader(RangeReader):
 					if end > rng.end:
 						end = rng.end
 
-		return data
-
 
 class HTTPRangeReader(RangeReader):
 	"""File-like reader that reads chunks of bytes over HTTP controlled by a list of ranges."""
@@ -435,9 +433,10 @@ def patch_file(
 					fht.write(data)
 					bytes_read += len(data)
 
-			for chunk in range_reader.read():
-				fht.seek(chunk.range.start)
-				fht.write(chunk.data)
+			if range_reader:
+				for chunk in range_reader.read():
+					fht.seek(chunk.range.start)
+					fht.write(chunk.data)
 
 	if output_file.exists():
 		output_file.unlink()
