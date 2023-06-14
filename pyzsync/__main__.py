@@ -5,6 +5,7 @@
 import argparse
 import logging
 import sys
+from base64 import b64encode
 from http.client import HTTPConnection, HTTPSConnection
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -29,14 +30,22 @@ def zsyncmake(file_path: Path) -> None:
 	create_zsync_file(file=file_path, zsync_file=file_path.with_name(f"{file_path.name}.zsync"))
 
 
-def zsync(url: str) -> None:
+def zsync(url: str, *, username: str | None = None, password: str | None = None) -> None:
 	url_obj = urlparse(url)
+	username = username or ""
+	password = password or ""
 
 	conn_class = HTTPConnection if url_obj.scheme == "http" else HTTPSConnection
 	connection = conn_class(url_obj.netloc, timeout=600, blocksize=65536)
 
+	headers = {}
+	if username or password:
+		auth = b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+		headers["Authorization"] = f"Basic {auth}"
+
 	print(f"Fetching zsync file {url_obj.geturl()}...")
-	connection.request("GET", url_obj.path)
+
+	connection.request("GET", url_obj.path, headers=headers)
 	response = connection.getresponse()
 	if response.status != 200:
 		raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: {response.status} - {response.read().decode('utf-8', 'ignore').strip()}")
@@ -89,7 +98,7 @@ def zsync(url: str) -> None:
 			self.last_completed = completed
 
 	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> HTTPPatcher:
-		range_reader = HTTPPatcher(instructions, target_file, rurl)
+		range_reader = HTTPPatcher(instructions, target_file, rurl, headers=headers)
 		range_reader.register_progress_listener(PrintingProgressListener())
 		return range_reader
 
@@ -121,6 +130,8 @@ def main() -> None:
 
 	p_zsync = subparsers.add_parser("zsync", help="Fetch file from ZSYNC_URL")
 	p_zsync.add_argument("zsync_url", help="URL to the zsync file")
+	p_zsync.add_argument("--username", help="HTTP basic auth username")
+	p_zsync.add_argument("--password", help="HTTP basic auth password")
 
 	p_compare = subparsers.add_parser("compare", help="Compare two files")
 	p_compare.add_argument("file", help="Path to the file", nargs=2)
@@ -134,7 +145,7 @@ def main() -> None:
 		return zsyncmake(Path(args.file))
 
 	if args.command == "zsync":
-		return zsync(args.zsync_url)
+		return zsync(args.zsync_url, username=args.username, password=args.password)
 
 	if args.command == "compare":
 		return compare(Path(args.file[0]), Path(args.file[1]))
