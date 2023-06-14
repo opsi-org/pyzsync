@@ -495,7 +495,11 @@ def test_checksum_collisions(tmp_path: Path, mode: str, block_size: int, checksu
 	shutil.rmtree(tmp_path)
 
 
-def test_http_patcher(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+	"chunk_size",
+	(100, 1_000, 10_000, 100_000),
+)
+def test_http_patcher(tmp_path: Path, chunk_size: int) -> None:
 	target_file = tmp_path / "local"
 
 	class MockHTTPPatcher(HTTPPatcher):
@@ -532,6 +536,7 @@ def test_http_patcher(tmp_path: Path) -> None:
 
 	with open(target_file, "wb") as tfh:
 		patcher = MockHTTPPatcher(instructions=instructions, target_file=tfh, url="https://localhost:12345/mock")
+		patcher.chunk_size = chunk_size
 		patcher.run()
 
 	data = target_file.read_bytes()
