@@ -19,6 +19,7 @@ mod md4;
 
 const RSUM_SIZE: usize = 4;
 const CHECKSUM_SIZE: usize = 16;
+const BITHASH_BITS: usize = 3;
 const ZSYNC_VERSION: &str = "0.6.2";
 const PYZSYNC_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCER_NAME: &str = "pyzsync";
@@ -409,6 +410,16 @@ fn rs_get_patch_instructions(
     // Get a list of instructions, based on the zsync file info,
     // to build the remote file, using as much as possible data from the local file.
 
+    let block_num: usize = zsync_file_info.block_info.len();
+
+    // Step down the value of i until we find a good hash size
+    let mut i = 16;
+    while (2 << (i - 1)) > block_num && i > 4 {
+        i -= 1;
+    }
+    let bithash_mask: u32 = (2 << (i + BITHASH_BITS)) - 1;
+    let mut bithash = vec![0u8; (bithash_mask + 1) as usize];
+
     let checksum_bytes = zsync_file_info.checksum_bytes as usize;
     // Arrange all blocks from the zsync file info in a map:
     // <block-rsum> => <block-md4> => <list of matching blocks>
@@ -416,6 +427,7 @@ fn rs_get_patch_instructions(
     let mut iter = zsync_file_info.block_info.iter();
     let mut sum_block_size: u64 = 0;
     while let Some(block_info) = iter.next() {
+        bithash[((block_info.rsum & bithash_mask) >> 3) as usize] |= 1 << (block_info.rsum & 7);
         sum_block_size += block_info.size as u64;
         let checksum = &block_info.checksum[0..checksum_bytes];
         if !map.contains_key(&block_info.rsum) {
@@ -439,6 +451,7 @@ fn rs_get_patch_instructions(
 
     let mut patch_instructions: Vec<PatchInstruction> = Vec::new();
     let mut block_ids_found: HashSet<u64> = HashSet::new();
+    let mut bithash_lookups: u64 = 0;
     let mut rsum_lookups: u64 = 0;
     let mut checksum_lookups: u64 = 0;
     let mut checksum_matches: u64 = 0;
@@ -500,48 +513,53 @@ fn rs_get_patch_instructions(
 
             // Reduce rsum for lookup to match rsum_bytes of block info
             let rsum_key = rsum & rsum_mask;
-            let entry = map.get(&rsum_key);
-            rsum_lookups += 1;
-            if entry.is_some() {
-                // Found some blocks wich match the rsum of the current buffer.
-                //debug!("Matching rsum");
-                // Calculate md4 checksum of current buffer and reduce it to checksum_bytes.
-                let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8)?;
-                let checksum = &full_checksum[0..checksum_bytes];
-                let block_infos = entry.unwrap().get(&checksum);
-                checksum_lookups += 1;
-                if block_infos.is_some() {
-                    // Found some blocks which also match the reduced md4 of the current buffer.
-                    checksum_matches += 1;
-                    //debug!("Matching md4: {:?}", block_infos);
-                    for block_info in block_infos.unwrap() {
-                        // A file can contain several blocks with matching md4 sums.
-                        // Check if block ID was already handled in the instructions.
-                        if !block_ids_found.contains(&block_info.block_id) {
-                            // Add current file offsets to instructions
-                            patch_instructions.push(PatchInstruction {
-                                source: file_id as i8,
-                                source_offset: pos - block_info.size as u64,
-                                target_offset: block_info.offset,
-                                size: block_info.size as u64,
-                            });
-                            // Add the ID of the block to the list of block IDs found
-                            block_ids_found.insert(block_info.block_id);
+
+            // First look into the bithash (fast negative check)
+            bithash_lookups += 1;
+            if bithash[((rsum & bithash_mask) >> 3) as usize] & (1 << (rsum & 7)) != 0 {
+                let entry = map.get(&rsum_key);
+                rsum_lookups += 1;
+                if entry.is_some() {
+                    // Found some blocks wich match the rsum of the current buffer.
+                    //debug!("Matching rsum");
+                    // Calculate md4 checksum of current buffer and reduce it to checksum_bytes.
+                    let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8)?;
+                    let checksum = &full_checksum[0..checksum_bytes];
+                    let block_infos = entry.unwrap().get(&checksum);
+                    checksum_lookups += 1;
+                    if block_infos.is_some() {
+                        // Found some blocks which also match the reduced md4 of the current buffer.
+                        checksum_matches += 1;
+                        //debug!("Matching md4: {:?}", block_infos);
+                        for block_info in block_infos.unwrap() {
+                            // A file can contain several blocks with matching md4 sums.
+                            // Check if block ID was already handled in the instructions.
+                            if !block_ids_found.contains(&block_info.block_id) {
+                                // Add current file offsets to instructions
+                                patch_instructions.push(PatchInstruction {
+                                    source: file_id as i8,
+                                    source_offset: pos - block_info.size as u64,
+                                    target_offset: block_info.offset,
+                                    size: block_info.size as u64,
+                                });
+                                // Add the ID of the block to the list of block IDs found
+                                block_ids_found.insert(block_info.block_id);
+                            }
                         }
+                        // Clear the buffer to read a full block size on next iteration
+                        buf.clear();
+                        continue;
                     }
-                    // Clear the buffer to read a full block size on next iteration
-                    buf.clear();
-                    continue;
                 }
             }
-            // No md4 match found, remove first char from buffer
+            // No match found, remove first char from buffer
             old_char = buf.drain(0..1).next().unwrap();
         }
     }
 
     debug!(
-        "Statistics: rsum_lookups={}, checksum_lookups={}, checksum_matches={}",
-        rsum_lookups, checksum_lookups, checksum_matches
+        "Statistics: bithash_lookups={}, rsum_lookups={}, checksum_lookups={}, checksum_matches={}",
+        bithash_lookups, rsum_lookups, checksum_lookups, checksum_matches
     );
 
     // Missing blocks need to be fetched from remote.
