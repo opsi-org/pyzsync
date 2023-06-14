@@ -184,6 +184,7 @@ class HTTPPatcher(Patcher):
 				self._requests.append({source_range: instructions})
 			else:
 				self._requests[-1][source_range] = instructions
+		self._instructions_processed: list[PatchInstruction] = []
 		self._request_index = -1
 		self._content_range: Range | None = None
 		self._current_instructions: dict[Range, list[PatchInstruction]] = {}
@@ -269,7 +270,7 @@ class HTTPPatcher(Patcher):
 		while True:
 			if not raw_data and (not self._content_range or range_pos >= self._content_range.end):
 				if self._request_index >= len(self._requests) - 1:
-					return
+					break
 				self._request()
 				boundary_len = len(self._boundary)
 				raw_data = b""
@@ -353,12 +354,23 @@ class HTTPPatcher(Patcher):
 					self._target_file.seek(seek)
 					self._target_file.write(rng_data)
 
+					if seek + len(rng_data) == inst.target_offset + inst.size:
+						logger.debug("Instruction %r was processed", inst)
+						if inst in self._instructions_processed:
+							logger.warning("Instruction %r was processed more than once", inst)
+						else:
+							self._instructions_processed.append(inst)
+
 			range_pos += data_len
 			self.total_position += data_len
 			if self.total_position > self.total_size:
 				self.total_position = self.total_size
 
 			self._call_progress_listeners()
+
+		missed_instructions = [inst for inst in self._instructions if inst not in self._instructions_processed]
+		if missed_instructions:
+			raise RuntimeError(f"The following instructions have not been processed: {missed_instructions}")
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
