@@ -73,7 +73,7 @@ class Range(NamedTuple):
 	end: int
 
 	@property
-	def size(self):
+	def size(self) -> int:
 		return self.end - self.start + 1
 
 
@@ -186,7 +186,7 @@ class HTTPPatcher(Patcher):
 				self._requests[-1][source_range] = instructions
 		self._request_index = -1
 		self._content_range: Range | None = None
-		self._current_instructions: list[PatchInstruction] = []
+		self._current_instructions: dict[Range, list[PatchInstruction]] = {}
 		self._part_index = -1
 		self._in_body = False
 		self._boundary = b""
@@ -214,7 +214,7 @@ class HTTPPatcher(Patcher):
 		try:
 			start_end = range.split("/", 1)[0].split("-")
 			self._content_range = Range(int(start_end[0].strip()), int(start_end[1].strip()))
-			self._current_instructions: dict[Range, list[PatchInstruction]] = {
+			self._current_instructions = {
 				source_range: instructions
 				for source_range, instructions in self._requests[self._request_index].items()
 				if source_range.start >= self._content_range.start and source_range.end <= self._content_range.end
@@ -309,6 +309,8 @@ class HTTPPatcher(Patcher):
 						raise RuntimeError(f"Content-Range header missing in part #{self._part_index}")
 
 					self._set_content_range(content_range)
+					assert isinstance(self._content_range, Range)
+
 					raw_data = raw_data[idx2 + 4 :]
 					self._in_body = True
 					range_pos = self._content_range.start

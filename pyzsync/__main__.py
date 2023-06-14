@@ -14,9 +14,9 @@ from urllib.parse import urlparse
 from pyzsync import (
 	SOURCE_REMOTE,
 	HTTPPatcher,
+	Patcher,
 	PatchInstruction,
 	ProgressListener,
-	Range,
 	create_zsync_file,
 	create_zsync_info,
 	get_patch_instructions,
@@ -78,7 +78,7 @@ def zsync(url: str) -> None:
 		def __init__(self) -> None:
 			self.last_completed = 0.0
 
-		def progress_changed(self, patcher: HTTPPatcher, position: int, total: int, per_second: int) -> None:
+		def progress_changed(self, patcher: Patcher, position: int, total: int, per_second: int) -> None:
 			completed = round(position * 100 / total, 1)
 			if completed == self.last_completed:
 				return

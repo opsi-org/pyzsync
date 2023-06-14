@@ -519,6 +519,7 @@ def test_http_patcher(tmp_path: Path) -> None:
 			return 206, CaseInsensitiveDict({"Content-Type": "multipart/byteranges; boundary=3d7d9f7d709b"})
 
 		def _read_response_data(self, size: int | None = None) -> bytes:
+			size = size or len(self.data) - self.pos
 			dat = self.data[self.pos : self.pos + size]
 			self.pos += size
 			return dat
