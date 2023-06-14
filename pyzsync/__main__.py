@@ -8,14 +8,15 @@ import sys
 from http.client import HTTPConnection, HTTPSConnection
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import BinaryIO
 from urllib.parse import urlparse
 
 from pyzsync import (
 	SOURCE_REMOTE,
-	HTTPRangeReader,
+	HTTPPatcher,
+	PatchInstruction,
 	ProgressListener,
 	Range,
-	RangeReader,
 	create_zsync_file,
 	create_zsync_info,
 	get_patch_instructions,
@@ -77,7 +78,7 @@ def zsync(url: str) -> None:
 		def __init__(self) -> None:
 			self.last_completed = 0.0
 
-		def progress_changed(self, reader: RangeReader, position: int, total: int, per_second: int) -> None:
+		def progress_changed(self, patcher: HTTPPatcher, position: int, total: int, per_second: int) -> None:
 			completed = round(position * 100 / total, 1)
 			if completed == self.last_completed:
 				return
@@ -87,12 +88,12 @@ def zsync(url: str) -> None:
 			)
 			self.last_completed = completed
 
-	def range_reader_factory(ranges: list[Range]) -> HTTPRangeReader:
-		range_reader = HTTPRangeReader(rurl, ranges)
+	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> HTTPPatcher:
+		range_reader = HTTPPatcher(instructions, target_file, rurl)
 		range_reader.register_progress_listener(PrintingProgressListener())
 		return range_reader
 
-	sha1 = patch_file(local_files, instructions, range_reader_factory=range_reader_factory, return_hash="sha1")
+	sha1 = patch_file(local_files, instructions, patcher_factory=patcher_factory, return_hash="sha1")
 	if ratio != 0:
 		print("")
 	if sha1 != zsync_info.sha1:

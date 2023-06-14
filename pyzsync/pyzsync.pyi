@@ -30,6 +30,7 @@ class ZsyncFileInfo:
 	checksum_bytes: int
 	block_info: list[BlockInfo]
 
+@dataclass
 class PatchInstruction:
 	"""
 	Position are zero-indexed & inclusive
