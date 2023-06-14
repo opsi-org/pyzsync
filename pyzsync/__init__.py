@@ -450,6 +450,7 @@ def patch_file(
 			else:
 				patcher = FilePatcher(instructions_by_source[source], target_file=fht, source_file=files[source])
 			patcher.run()
+	logger.debug("Temp file '%s' patching completed", tmp_file)
 
 	if output_file.exists():
 		logger.debug("Removing output file '%s'", output_file)
