@@ -235,7 +235,7 @@ class HTTPPatcher(Patcher):
 		byte_ranges = ", ".join(f"{r.start}-{r.end}" for r in self._requests[self._request_index])
 		self._headers["Range"] = f"bytes={byte_ranges}"
 
-		logger.info("Sending GET request #%d to %s", self._request_index, self._url.geturl())
+		logger.info("Sending GET request #%d to %s", self._request_index + 1, self._url.geturl())
 		logger.debug("Sending GET request with headers: %r", self._headers)
 		response_code, response_headers = self._send_request()
 		logger.debug("Received response: %r, headers: %r", response_code, response_headers)
@@ -441,8 +441,10 @@ def patch_file(
 	for inst in instructions:
 		instructions_by_source[inst.source].append(inst)
 
+	logger.debug("Patching temp file '%s'", tmp_file)
 	with open(tmp_file, "wb") as fht:
 		for source in sorted(instructions_by_source):
+			logger.debug("Processing %d instructions for source %r", len(instructions_by_source[source]), source)
 			if source == SOURCE_REMOTE:
 				patcher = patcher_factory(instructions_by_source[source], target_file=fht)
 			else:
@@ -450,17 +452,22 @@ def patch_file(
 			patcher.run()
 
 	if output_file.exists():
+		logger.debug("Removing output file '%s'", output_file)
 		output_file.unlink()
+
+	logger.debug("Renaming temp file '%s' to output file '%s'", tmp_file, output_file)
 	tmp_file.rename(output_file)
 
 	if delete_files:
 		for file in files:
 			if file.exists() and file != output_file:
+				logger.debug("Deleting file '%s'", file)
 				file.unlink()
 
 	if not return_hash:
 		return b""
 
+	logger.debug("Calculating %r hash digest of output file '%s'", return_hash, output_file)
 	_hash = hashlib.new(return_hash)
 	with open(output_file, "rb") as fht:
 		while data := fht.read(65536):
