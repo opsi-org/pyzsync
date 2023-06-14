@@ -19,7 +19,6 @@ mod md4;
 
 const RSUM_SIZE: usize = 4;
 const CHECKSUM_SIZE: usize = 16;
-const BITHASH_BITS: usize = 3;
 const ZSYNC_VERSION: &str = "0.6.2";
 const PYZSYNC_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCER_NAME: &str = "pyzsync";
@@ -410,14 +409,7 @@ fn rs_get_patch_instructions(
     // Get a list of instructions, based on the zsync file info,
     // to build the remote file, using as much as possible data from the local file.
 
-    let block_num: usize = zsync_file_info.block_info.len();
-
-    // Step down the value of i until we find a good hash size
-    let mut i = 16;
-    while (2 << (i - 1)) > block_num && i > 4 {
-        i -= 1;
-    }
-    let bithash_mask: u32 = (2 << (i + BITHASH_BITS)) - 1;
+    let bithash_mask: u32 = (2 << (zsync_file_info.rsum_bytes * 8 - 1)) - 1;
     let mut bithash = vec![0u8; (bithash_mask + 1) as usize];
 
     let checksum_bytes = zsync_file_info.checksum_bytes as usize;
@@ -516,7 +508,7 @@ fn rs_get_patch_instructions(
 
             // First look into the bithash (fast negative check)
             bithash_lookups += 1;
-            if bithash[((rsum & bithash_mask) >> 3) as usize] & (1 << (rsum & 7)) != 0 {
+            if bithash[((rsum_key & bithash_mask) >> 3) as usize] & (1 << (rsum_key & 7)) != 0 {
                 let entry = map.get(&rsum_key);
                 rsum_lookups += 1;
                 if entry.is_some() {
