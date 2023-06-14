@@ -431,9 +431,9 @@ def patch_file(
 		output_file = files[0]
 
 	timestamp_millis = int(1000 * time.time())
-	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp-{timestamp_millis}").resolve()
+	tmp_file = output_file.with_name(f"{output_file.name}.zsync-tmp-{timestamp_millis}").absolute()
 	for idx, file in enumerate(files):
-		files[idx] = file.resolve()
+		files[idx] = file.absolute()
 		if files[idx] == tmp_file:
 			raise ValueError(f"Invalid filename {files[idx]}")
 
@@ -456,12 +456,12 @@ def patch_file(
 		logger.debug("Removing output file '%s'", output_file)
 		output_file.unlink()
 
-	logger.debug("Renaming temp file '%s' to output file '%s'", tmp_file, output_file)
+	logger.debug("Moving temp file '%s' to output file '%s'", tmp_file, output_file)
 	tmp_file.rename(output_file)
 
 	if delete_files:
 		for file in files:
-			if file.exists() and file != output_file:
+			if file.exists() and not file.resolve().samefile(output_file.resolve()):
 				logger.debug("Deleting file '%s'", file)
 				file.unlink()
 
