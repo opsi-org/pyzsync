@@ -170,7 +170,6 @@ if __name__ == "__main__":
 	try:
 		main()
 	except BaseException as err:
-		raise
 		print(err, file=sys.stderr)
 		sys.exit(1)
 	sys.exit(0)
