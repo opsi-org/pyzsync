@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from pyzsync import (
 	SOURCE_REMOTE,
+	FilePatcher,
 	HTTPPatcher,
 	Patcher,
 	PatchInstruction,
@@ -31,42 +32,50 @@ def zsyncmake(file_path: Path) -> None:
 
 
 def zsync(url: str, *, username: str | None = None, password: str | None = None) -> None:
+	if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
+		url = f"file://{Path(url).absolute()}"
 	url_obj = urlparse(url)
-	username = username or ""
-	password = password or ""
 
-	conn_class = HTTPConnection if url_obj.scheme == "http" else HTTPSConnection
-	connection = conn_class(url_obj.netloc, timeout=600, blocksize=65536)
+	if url_obj.scheme != "file":
+		username = username or ""
+		password = password or ""
 
-	headers = {}
-	if username or password:
-		auth = b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
-		headers["Authorization"] = f"Basic {auth}"
+		conn_class = HTTPConnection if url_obj.scheme == "http" else HTTPSConnection
+		connection = conn_class(url_obj.netloc, timeout=600, blocksize=65536)
 
-	print(f"Fetching zsync file {url_obj.geturl()}...")
+		headers = {}
+		if username or password:
+			auth = b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+			headers["Authorization"] = f"Basic {auth}"
 
-	connection.request("GET", url_obj.path, headers=headers)
-	response = connection.getresponse()
-	if response.status != 200:
-		raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: {response.status} - {response.read().decode('utf-8', 'ignore').strip()}")
-	total_size = int(response.headers["Content-Length"])
-	position = 0
-	with TemporaryDirectory() as temp_dir:
-		zsync_file = Path(temp_dir) / url_obj.path.split("/")[-1]
-		with open(zsync_file, "wb") as file:
-			last_completed = 0.0
-			while position < total_size:
-				data = response.read(65536)
-				if not data:
-					raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: read only {position/total_size} bytes")
-				file.write(data)
-				position += len(data)
-				completed = round(position * 100 / total_size, 1)
-				if completed != last_completed:
-					print(f"\r{completed:0.1f} %", end="")
-					last_completed = completed
-			print("")
-		zsync_info = read_zsync_file(zsync_file)
+		print(f"Fetching zsync file {url_obj.geturl()}...")
+
+		connection.request("GET", url_obj.path, headers=headers)
+		response = connection.getresponse()
+		if response.status != 200:
+			raise RuntimeError(
+				f"Failed to fetch {url_obj.geturl()}: {response.status} - {response.read().decode('utf-8', 'ignore').strip()}"
+			)
+		total_size = int(response.headers["Content-Length"])
+		position = 0
+		with TemporaryDirectory() as temp_dir:
+			zsync_file = Path(temp_dir) / url_obj.path.split("/")[-1]
+			with open(zsync_file, "wb") as file:
+				last_completed = 0.0
+				while position < total_size:
+					data = response.read(65536)
+					if not data:
+						raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: read only {position/total_size} bytes")
+					file.write(data)
+					position += len(data)
+					completed = round(position * 100 / total_size, 1)
+					if completed != last_completed:
+						print(f"\r{completed:0.1f} %", end="")
+						last_completed = completed
+				print("")
+			zsync_info = read_zsync_file(zsync_file)
+	else:
+		zsync_info = read_zsync_file(url_obj.path)
 
 	local_files = [Path(Path(zsync_info.filename).name).absolute()]
 	local_files.extend(local_files[0].parent.glob(f"{local_files[0].name}.zsync-tmp-*"))
@@ -97,10 +106,13 @@ def zsync(url: str, *, username: str | None = None, password: str | None = None)
 			)
 			self.last_completed = completed
 
-	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> HTTPPatcher:
-		range_reader = HTTPPatcher(instructions, target_file, rurl, headers=headers)
-		range_reader.register_progress_listener(PrintingProgressListener())
-		return range_reader
+	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
+		if url_obj.scheme == "file":
+			patcher = FilePatcher(instructions, target_file, Path(rurl.split("://", 1)[1]))
+		else:
+			patcher = HTTPPatcher(instructions, target_file, rurl, headers=headers)
+		patcher.register_progress_listener(PrintingProgressListener())
+		return patcher
 
 	sha1 = patch_file(local_files, instructions, patcher_factory=patcher_factory, return_hash="sha1")
 	if ratio != 0:
@@ -157,6 +169,7 @@ if __name__ == "__main__":
 	try:
 		main()
 	except BaseException as err:
+		raise
 		print(err, file=sys.stderr)
 		sys.exit(1)
 	sys.exit(0)

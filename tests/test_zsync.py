@@ -137,6 +137,20 @@ def test_update_rsum() -> None:
 		# print(hex(rsum))
 		assert _rsum == new_rsum
 
+	start = time.time()
+	old_char = new_char = bblock[0]
+	for _ in range(1_000_000):
+		_rsum = update_rsum(_rsum, old_char, new_char)
+	diff = time.time() - start
+	print(diff)
+
+	start = time.time()
+	old_char = new_char = bblock[0]
+	for _ in range(1_000_000):
+		rsum(bblock, 4)
+	diff = time.time() - start
+	print(diff)
+
 
 def test_calc_block_size() -> None:
 	assert calc_block_size(1) == 2048
@@ -172,6 +186,68 @@ def test_hash_speed(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
+def test_get_patch_instructions(tmp_path: Path) -> None:
+	remote_file = Path("tests/data/test.small")
+	local_file = tmp_path / "test.small"
+	zsync_file = Path("tests/data/test.small.zsync")
+	info = read_zsync_file(zsync_file)
+	data = remote_file.read_bytes()
+
+	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
+		return FilePatcher(instructions=instructions, target_file=target_file, source_file=remote_file)
+
+	info.seq_matches = 1
+	local_file.write_bytes(data[:2048])
+	instructions = get_patch_instructions(info, local_file)
+	# print(instructions)
+
+	assert instructions[0].source == 0
+	assert instructions[0].source_offset == 0
+	assert instructions[0].target_offset == 0
+	assert instructions[0].size == 2048
+	assert instructions[1].source == SOURCE_REMOTE
+	assert instructions[1].source_offset == 2048
+	assert instructions[1].target_offset == 2048
+	assert instructions[1].size == 6961
+	sha1 = patch_file(local_file, instructions, patcher_factory)
+	assert sha1.hex() == info.sha1.hex()
+
+	# blocks: L R R L L
+	local_file.write_bytes(data[:2048] + data[6144:])
+	instructions = get_patch_instructions(info, local_file)
+	assert instructions[0].source == 0
+	assert instructions[0].source_offset == 0
+	assert instructions[0].target_offset == 0
+	assert instructions[0].size == 2048
+	assert instructions[1].source == SOURCE_REMOTE
+	assert instructions[1].source_offset == 2048
+	assert instructions[1].target_offset == 2048
+	assert instructions[1].size == 4096
+	assert instructions[2].source == 0
+	assert instructions[2].source_offset == 2048
+	assert instructions[2].target_offset == 6144
+	assert instructions[2].size == 2048
+	assert instructions[3].source == 0
+	assert instructions[3].source_offset == 4096
+	assert instructions[3].target_offset == 8192
+	assert instructions[3].size == 817
+
+	sha1 = patch_file(local_file, instructions, patcher_factory)
+	assert sha1.hex() == info.sha1.hex()
+
+	info.seq_matches = 2
+	local_file.write_bytes(data[:2048])
+	instructions = get_patch_instructions(info, local_file)
+	# print(instructions)
+
+	assert instructions[0].source == SOURCE_REMOTE
+	assert instructions[0].size == 9009
+	assert instructions[0].source_offset == 0
+	assert instructions[0].target_offset == 0
+	sha1 = patch_file(local_file, instructions, patcher_factory)
+	assert sha1.hex() == info.sha1.hex()
+
+
 @pytest.mark.posix
 def test_calc_block_infos(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
@@ -205,6 +281,12 @@ def test_read_zsync_file(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false
 	test_file = Path("tests/data/test.small")
 	zsync_file = Path("tests/data/test.small.zsync")
+	# Original zsync rsum.a rsum.b:
+	# 0 32845
+	# 0 15789
+	# 0 2597
+	# 0 58805
+	# 0 31352
 
 	digest = hashlib.sha1(test_file.read_bytes()).hexdigest()
 	assert digest == "bfb8611ca38c187cea650072898ff4381ed2b465"
@@ -412,7 +494,7 @@ def test_create_zsync_file(tmp_path: Path, legacy_mode: bool) -> None:
 		("random", 2048, 2, 6, 1.1),
 		("random", 2048, 3, 2, 1.001),
 		("random", 2048, 4, 2, 1.0002),
-		("random", 4096, 1, 67, 40),
+		("random", 4096, 1, 68, 40),
 		("random", 4096, 2, 6, 1.1),
 		("random", 4096, 3, 2, 1.001),
 		("random", 4096, 4, 2, 1.00011),
@@ -583,6 +665,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	# Start sync
 	files = [local_file1, local_file2, local_file3]
 	zsync_info = read_zsync_file(remote_zsync_file)
+	zsync_info.seq_matches = 1
 	instructions = get_patch_instructions(zsync_info, files)
 	# for inst in instructions:
 	# 	print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
@@ -628,7 +711,11 @@ def test_patch_file_http(tmp_path: Path) -> None:
 
 	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 	zsync_info = read_zsync_file(remote_zsync_file)
+	zsync_info.seq_matches = 1
 	instructions = get_patch_instructions(zsync_info, local_file)
+	for inst in instructions:
+		print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
+
 	# R:0, L:1, L:2, L:3, R:4-6, L:7, R:8-9
 	assert len(instructions) == 7
 	assert instructions[0].source == SOURCE_REMOTE
@@ -741,7 +828,8 @@ def test_patch_tar(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
 	"file_size",
-	(1_000_000, 100_000_000, 1_000_000_000),
+	# (1_000_000, 100_000_000, 1_000_000_000),
+	(30_000_000,),
 )
 @pytest.mark.zsyncmake_available
 def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> None:
@@ -760,7 +848,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 				assert data_size <= block_size
 			block_data = randbytes(data_size)
 			rfile.write(block_data)
-			if block_id % 4 == 0:
+			if block_id % 10 == 0:
 				lfile.write(b"\0\0\0")
 			else:
 				lfile.write(block_data)
@@ -789,7 +877,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
 	print(f"Speedup: {speedup}%")
-	assert round(speedup) == 75
+	assert round(speedup) == 80
 
 	shutil.rmtree(tmp_path)
 

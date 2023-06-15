@@ -7,6 +7,7 @@
 ## Develop
 ```
 poetry run maturin develop --release
+cargo test --no-default-features
 poetry run pytest -vv
 ```
 

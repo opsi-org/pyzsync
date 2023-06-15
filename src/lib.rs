@@ -4,7 +4,7 @@
 # License: AGPL-3.0
 */
 use chrono::prelude::*;
-use log::{debug, info};
+use log::{debug, info, warn};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::{types::PyBytes, wrap_pyfunction};
@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 mod md4;
 
@@ -163,8 +164,13 @@ impl ZsyncFileInfo {
         Ok(self.block_size)
     }
     #[getter]
-    fn seq_matches(&self) -> PyResult<u8> {
+    fn get_seq_matches(&self) -> PyResult<u8> {
         Ok(self.seq_matches)
+    }
+    #[setter]
+    fn set_seq_matches(&mut self, value: u8) -> PyResult<()> {
+        self.seq_matches = value;
+        Ok(())
     }
     #[getter]
     fn rsum_bytes(&self) -> PyResult<u8> {
@@ -234,20 +240,29 @@ fn rs_version() -> PyResult<String> {
 }
 
 /// Get the md4 hash of a block
-fn _md4(block: &Vec<u8>, num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
+fn _md4_part(
+    block: &Vec<u8>,
+    num_bytes: u8,
+    offset: usize,
+    len: usize,
+) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
     if num_bytes <= 0 || num_bytes > CHECKSUM_SIZE as u8 {
         return Err(PyValueError::new_err(format!(
             "num_bytes out of range: {}",
             num_bytes
         )));
     }
-    let mut checksum: [u8; CHECKSUM_SIZE] = md4::md4(block);
+    let mut checksum: [u8; CHECKSUM_SIZE] = md4::md4(&block[offset..offset + len]);
     if (num_bytes as usize) < CHECKSUM_SIZE {
         for idx in (num_bytes as usize)..CHECKSUM_SIZE {
             checksum[idx] = 0u8;
         }
     }
     Ok(checksum)
+}
+
+fn _md4(block: &Vec<u8>, num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
+    _md4_part(block, num_bytes, 0, block.len())
 }
 
 #[pyfunction]
@@ -257,7 +272,7 @@ fn rs_md4(block: &PyBytes, num_bytes: u8, py: Python<'_>) -> PyResult<PyObject> 
 }
 
 /// Get the rsum of a block
-fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
+fn _rsum_part(block: &Vec<u8>, num_bytes: u8, offset: usize, len: usize) -> Result<u32, PyErr> {
     if num_bytes <= 0 || num_bytes > RSUM_SIZE as u8 {
         return Err(PyValueError::new_err(format!(
             "num_bytes out of range: {}",
@@ -266,9 +281,8 @@ fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
     }
     let mut a: u16 = 0;
     let mut b: u16 = 0;
-    let len = block.len();
     let mut rlen = len as u16;
-    for idx in 0..len {
+    for idx in offset..offset + len {
         let c = u16::from(block[idx]);
         a += c;
         b += rlen * c;
@@ -280,6 +294,10 @@ fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
         res &= mask;
     }
     Ok(res)
+}
+
+fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
+    _rsum_part(&block, num_bytes, 0, block.len())
 }
 
 #[pyfunction]
@@ -409,24 +427,44 @@ fn rs_get_patch_instructions(
     // Get a list of instructions, based on the zsync file info,
     // to build the remote file, using as much as possible data from the local file.
 
-    let bithash_mask: u32 = (2 << (zsync_file_info.rsum_bytes * 8 - 1)) - 1;
-    let mut bithash = vec![0u8; (bithash_mask + 1) as usize];
-
+    // If seq_matches is set to 2, the algorithm searches for two consecutive matching blocks.
+    // This greatly speeds up the matching process.
+    let seq_matches = zsync_file_info.seq_matches > 1;
     let checksum_bytes = zsync_file_info.checksum_bytes as usize;
+    let block_size = zsync_file_info.block_size as usize;
+
+    // There are 2 ** (rsum_bytes * 8) possible rsum hashes.
+    let max_rsum_hashes = 2 << (zsync_file_info.rsum_bytes * 8 - 1);
+    let rsum_mask: u32 = max_rsum_hashes - 1;
+
+    // The rsum_list is used for fast negative checking.
+    // If the value of the vector at index <rsum> is 0,
+    // the hash does not exist in the block info.
+    let mut rsum_list = vec![0u8; max_rsum_hashes as usize];
+
     // Arrange all blocks from the zsync file info in a map:
     // <block-rsum> => <block-md4> => <list of matching blocks>
     let mut map = BTreeMap::new();
-    let mut iter = zsync_file_info.block_info.iter();
     let mut sum_block_size: u64 = 0;
-    while let Some(block_info) = iter.next() {
-        bithash[((block_info.rsum & bithash_mask) >> 3) as usize] |= 1 << (block_info.rsum & 7);
+
+    for idx in 0..zsync_file_info.block_info.len() {
+        let block_info = &zsync_file_info.block_info[idx];
+        let mut hash = block_info.rsum;
+        //info!("++hash: {}", hash);
+        rsum_list[hash as usize] = 1;
+        if seq_matches && idx + 1 < zsync_file_info.block_info.len() {
+            // Combine rsum and rsum of following block
+            let next_block_info = &zsync_file_info.block_info[idx + 1];
+            hash ^= next_block_info.rsum << 16;
+        }
+
         sum_block_size += block_info.size as u64;
         let checksum = &block_info.checksum[0..checksum_bytes];
-        if !map.contains_key(&block_info.rsum) {
+        if !map.contains_key(&hash) {
             let map2 = BTreeMap::new();
-            map.insert(block_info.rsum, map2);
+            map.insert(hash, map2);
         }
-        let map2 = map.get_mut(&block_info.rsum).unwrap();
+        let map2 = map.get_mut(&hash).unwrap();
         if !map2.contains_key(&checksum) {
             let blocks: Vec<&BlockInfo> = Vec::new();
             map2.insert(checksum, blocks);
@@ -443,8 +481,8 @@ fn rs_get_patch_instructions(
 
     let mut patch_instructions: Vec<PatchInstruction> = Vec::new();
     let mut block_ids_found: HashSet<u64> = HashSet::new();
-    let mut bithash_lookups: u64 = 0;
-    let mut rsum_lookups: u64 = 0;
+    let mut rsum_list_lookups: u64 = 0;
+    let mut rsum_map_lookups: u64 = 0;
     let mut checksum_lookups: u64 = 0;
     let mut checksum_matches: u64 = 0;
 
@@ -456,66 +494,112 @@ fn rs_get_patch_instructions(
         }
         let file = File::open(file_path)?;
         let metadata = file.metadata()?;
-        let size = metadata.len();
+        let file_size = metadata.len();
         let reader = BufReader::new(file);
         let mut read_it = reader.bytes();
-        let mut buf: Vec<u8> = Vec::with_capacity(zsync_file_info.block_size as usize);
+        let buffer_size = block_size * 2;
+        let mut buf: Vec<u8> = Vec::with_capacity(buffer_size);
         let mut pos = 0;
+        let end_pos: u64 =
+            (((file_size as f64 / buffer_size as f64).floor() + 1.0) * buffer_size as f64) as u64;
         let mut percent: u8 = 0;
         let mut rsum = 0;
-        let mut new_char = 0u8;
-        let mut old_char = 0u8;
-        let rsum_mask = 0xffffffff >> (8 * (RSUM_SIZE as u8 - zsync_file_info.rsum_bytes));
-
+        let mut next_rsum = 0;
+        let mut added_char = 0u8;
+        let mut removed_char = 0u8;
+        let start_time = Instant::now();
         // Continuously fill a buffer with bytes from the file and update the rsum.
         // If current rsum is found in map, also check md4.
         // Add matches to patch_instructions.
         loop {
-            let new_percent: u8 = ((pos as f64 / size as f64) * 100.0) as u8;
-            if new_percent != percent || pos == 0 || pos >= size {
+            //info!("-- loop -- {} {} {}", pos, end_pos, file_size);
+            let new_percent: u8 = ((pos as f64 / end_pos as f64) * 100.0) as u8;
+            if new_percent != percent || pos == 0 || pos >= end_pos {
                 percent = new_percent;
-                info!("pos: {}/{} ({} %)", pos, size, percent);
+                let duration = start_time.elapsed().as_millis();
+                info!(
+                    "{}/{} | {} % | {} ms | {} > {} > {} > {}",
+                    pos,
+                    end_pos,
+                    percent,
+                    duration,
+                    rsum_list_lookups,
+                    rsum_map_lookups,
+                    checksum_lookups,
+                    checksum_matches
+                );
             }
-            if pos >= size {
+
+            if pos >= end_pos as u64 {
                 break;
             }
             // Let the Python interpreter a chance to process signals
             py.check_signals()?;
 
             // Fill the buffer with chars until the block size is reached.
-            let add_chars = zsync_file_info.block_size - buf.len() as u32;
-            while buf.len() < zsync_file_info.block_size as usize {
+            let add_chars = buffer_size - buf.len();
+            //////////////info!("add_chars {}", add_chars);
+            while buf.len() < buffer_size {
                 let _byte = read_it.next();
                 if _byte.is_none() {
                     // End of file, fill buffer with zeroes
                     buf.push(0u8);
-                    continue;
+                } else {
+                    added_char = _byte.unwrap().unwrap();
+                    buf.push(added_char);
                 }
-                new_char = _byte.unwrap().unwrap();
-                buf.push(new_char);
                 pos += 1;
             }
+            //////////////info!("size {} pos {} buf.len() {}", size, pos, buf.len());
+
             if add_chars == 1 {
                 // Only one char added, update the rolling checksum
-                rsum = _update_rsum(rsum, old_char, new_char);
+                let char = buf[block_size - 1];
+                rsum = _update_rsum(rsum, removed_char, char);
+                if seq_matches {
+                    next_rsum = _update_rsum(next_rsum, char, added_char);
+                }
             } else {
                 // More than one char added to buffer, calculate new rsum
-                rsum = _rsum(&buf, RSUM_SIZE as u8)?;
+                if next_rsum == 0 || add_chars != block_size {
+                    // Exactly one block size added, reuse next rsum
+                    rsum = _rsum_part(&buf, RSUM_SIZE as u8, 0, block_size)?;
+                } else {
+                    rsum = next_rsum;
+                }
+                if seq_matches {
+                    next_rsum = _rsum_part(&buf, RSUM_SIZE as u8, block_size, block_size)?;
+                }
             }
 
             // Reduce rsum for lookup to match rsum_bytes of block info
-            let rsum_key = rsum & rsum_mask;
+            let mut hash = rsum & rsum_mask;
+            let mut rsum_list_match = false;
 
-            // First look into the bithash (fast negative check)
-            bithash_lookups += 1;
-            if bithash[((rsum_key & bithash_mask) >> 3) as usize] & (1 << (rsum_key & 7)) != 0 {
-                let entry = map.get(&rsum_key);
-                rsum_lookups += 1;
+            //use std::str;
+            //info!("buf {}", str::from_utf8(&buf).unwrap());
+            //info!("-- hash {}", hash);
+            // First look into the rsum_list (fast negative check)
+            rsum_list_lookups += 1;
+            if rsum_list[hash as usize] != 0 {
+                if seq_matches {
+                    let next_hash = next_rsum & rsum_mask;
+                    hash ^= next_hash << 16;
+                    if rsum_list[next_hash as usize] != 0 {
+                        rsum_list_match = true;
+                    }
+                } else {
+                    rsum_list_match = true;
+                }
+            }
+            if rsum_list_match {
+                //info!("rsum_list_match {}", pos);
+                let entry = map.get(&hash);
+                rsum_map_lookups += 1;
                 if entry.is_some() {
                     // Found some blocks wich match the rsum of the current buffer.
-                    //debug!("Matching rsum");
                     // Calculate md4 checksum of current buffer and reduce it to checksum_bytes.
-                    let full_checksum = _md4(&buf, CHECKSUM_SIZE as u8)?;
+                    let full_checksum = _md4_part(&buf, CHECKSUM_SIZE as u8, 0, block_size)?;
                     let checksum = &full_checksum[0..checksum_bytes];
                     let block_infos = entry.unwrap().get(&checksum);
                     checksum_lookups += 1;
@@ -530,7 +614,7 @@ fn rs_get_patch_instructions(
                                 // Add current file offsets to instructions
                                 patch_instructions.push(PatchInstruction {
                                     source: file_id as i8,
-                                    source_offset: pos - block_info.size as u64,
+                                    source_offset: pos - buffer_size as u64,
                                     target_offset: block_info.offset,
                                     size: block_info.size as u64,
                                 });
@@ -538,21 +622,33 @@ fn rs_get_patch_instructions(
                                 block_ids_found.insert(block_info.block_id);
                             }
                         }
-                        // Clear the buffer to read a full block size on next iteration
-                        buf.clear();
+                        // Remove on block from buffer to read a full block size on next iteration
+                        buf.drain(0..block_size);
                         continue;
                     }
                 }
             }
+
             // No match found, remove first char from buffer
-            old_char = buf.drain(0..1).next().unwrap();
+            removed_char = buf.drain(0..1).next().unwrap();
+        }
+        let duration = start_time.elapsed().as_millis();
+        let mut rsum_efficiency = 1.0;
+        if rsum_map_lookups > 0 {
+            rsum_efficiency = 1.0
+                - ((checksum_lookups as f64 - checksum_matches as f64) / rsum_map_lookups as f64);
+        }
+        debug!(
+            "Statistics: duration={} ms, rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %",
+            duration, rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
+        );
+        if rsum_efficiency < 0.4 {
+            warn!(
+                "Inefficient rsum (rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %)",
+                rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
+            );
         }
     }
-
-    debug!(
-        "Statistics: bithash_lookups={}, rsum_lookups={}, checksum_lookups={}, checksum_matches={}",
-        bithash_lookups, rsum_lookups, checksum_lookups, checksum_matches
-    );
 
     // Missing blocks need to be fetched from remote.
     // Add instructions to fetch all contiguous areas.
@@ -919,4 +1015,16 @@ fn pyzsync(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rs_create_zsync_info, m)?)?;
     m.add_function(wrap_pyfunction!(rs_create_zsync_file, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::_rsum;
+
+    #[test]
+    fn test_rsum() {
+        let data = vec![0u8; 2048];
+        let rsum = _rsum(&data, 4).unwrap();
+        assert_eq!(rsum, 0);
+    }
 }
