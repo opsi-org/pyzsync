@@ -120,36 +120,37 @@ def test_rsum() -> None:
 	assert hex(rsum(bblock, 1)) == "0xa0"
 
 
-def test_update_rsum() -> None:
+@pytest.mark.parametrize(
+	"rsum_bytes, block_size",
+	(
+		(2, 2048),
+		(3, 2048),
+		(4, 2048),
+		(2, 4096),
+		(3, 4096),
+		(4, 4096),
+	),
+)
+def test_update_rsum(rsum_bytes: int, block_size: int) -> None:
 	block = ""
 	for char in range(2, 1089):
 		block += chr(char)
+	if block_size == 4096:
+		block += block
 	bblock = block.encode("utf-8")
-	assert len(bblock) == 2048
+	assert len(bblock) == block_size
 	_rsum = rsum(bblock, 4)
-	assert hex(_rsum) == "0x68f0b901"
+	assert hex(_rsum) == "0xd1e0f202" if block_size == 4096 else "0x68f0b901"
+
+	rsum_mask = (2 << (rsum_bytes * 8 - 1)) - 1
 	for _ in range(2048):
 		old_char = bblock[0]
 		bblock = bblock[1:] + b"\03"
 		new_char = bblock[-1]
-		new_rsum = rsum(bblock, 4)
-		_rsum = update_rsum(_rsum, old_char, new_char)
+		new_rsum = rsum(bblock, rsum_bytes)
+		_rsum = update_rsum(_rsum, old_char, new_char, block_size)
 		# print(hex(rsum))
-		assert _rsum == new_rsum
-
-	start = time.time()
-	old_char = new_char = bblock[0]
-	for _ in range(1_000_000):
-		_rsum = update_rsum(_rsum, old_char, new_char)
-	diff = time.time() - start
-	print(diff)
-
-	start = time.time()
-	old_char = new_char = bblock[0]
-	for _ in range(1_000_000):
-		rsum(bblock, 4)
-	diff = time.time() - start
-	print(diff)
+		assert _rsum & rsum_mask == new_rsum
 
 
 def test_calc_block_size() -> None:
@@ -632,7 +633,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 	local_file2 = tmp_path / "local2"
 	local_file3 = tmp_path / "local3"
 
-	file_size = 100_000_000
+	file_size = 200_000_000
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
 	with (
@@ -689,7 +690,7 @@ def test_patch_file_local(tmp_path: Path) -> None:
 
 	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
-	print(f"Speedup: {speedup}%")
+	print(f"Speedup: {speedup} %")
 	assert round(speedup) == 75
 
 	shutil.rmtree(tmp_path)
@@ -765,7 +766,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 		# assert remote_file.read_bytes() == local_file.read_bytes()
 
 	speedup = (zsync_info.length - remote_bytes) * 100 / zsync_info.length
-	print(f"Speedup: {speedup}%")
+	print(f"Speedup: {speedup} %")
 	assert round(speedup) == 42
 
 	shutil.rmtree(tmp_path)
@@ -820,7 +821,7 @@ def test_patch_tar(tmp_path: Path) -> None:
 
 	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
-	print(f"Speedup: {speedup}%")
+	print(f"Speedup: {speedup} %")
 	assert round(speedup) >= 86
 
 	shutil.rmtree(tmp_path)
@@ -828,8 +829,7 @@ def test_patch_tar(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
 	"file_size",
-	# (1_000_000, 100_000_000, 1_000_000_000),
-	(30_000_000,),
+	(1_000_000, 100_000_000, 1_000_000_000),
 )
 @pytest.mark.zsyncmake_available
 def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> None:
@@ -876,7 +876,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	local_bytes = sum(i.size for i in instructions if i.source != SOURCE_REMOTE)
 	speedup = local_bytes * 100 / zsync_info.length
-	print(f"Speedup: {speedup}%")
+	print(f"Speedup: {speedup} %")
 	assert round(speedup) == 80
 
 	shutil.rmtree(tmp_path)

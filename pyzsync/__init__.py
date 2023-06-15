@@ -381,8 +381,8 @@ def rsum(block: bytes, num_bytes: int = 4) -> int:
 	return rs_rsum(block, num_bytes)
 
 
-def update_rsum(rsum: int, old_char: int, new_char: int) -> int:
-	return rs_update_rsum(rsum, old_char, new_char)
+def update_rsum(rsum: int, old_char: int, new_char: int, block_size: int) -> int:
+	return rs_update_rsum(rsum, old_char, new_char, block_size)
 
 
 def calc_block_size(file_size: int) -> int:

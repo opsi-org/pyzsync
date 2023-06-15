@@ -306,20 +306,22 @@ fn rs_rsum(block: &PyBytes, num_bytes: u8) -> PyResult<u32> {
     Ok(res)
 }
 
-fn _update_rsum(rsum: u32, old_char: u8, new_char: u8) -> u32 {
+fn _update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> u32 {
+    // 1 << block_shift = block_size
+    let block_shift = if block_size == 2048 { 11 } else { 12 };
     let old_char_u16 = u16::from(old_char);
     let new_char_u16 = u16::from(new_char);
     let mut a: u16 = ((rsum & 0xffff0000) >> 16) as u16;
     let mut b: u16 = rsum as u16 & 0xffff;
     a += new_char_u16 - old_char_u16;
-    b += a - (old_char_u16 << 11);
+    b += a - (old_char_u16 << block_shift);
     let res: u32 = ((a as u32) << 16) + b as u32;
     res
 }
 
 #[pyfunction]
-fn rs_update_rsum(rsum: u32, old_char: u8, new_char: u8) -> PyResult<u32> {
-    let res = _update_rsum(rsum, old_char, new_char);
+fn rs_update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> PyResult<u32> {
+    let res = _update_rsum(rsum, old_char, new_char, block_size);
     Ok(res)
 }
 
@@ -450,7 +452,7 @@ fn rs_get_patch_instructions(
     for idx in 0..zsync_file_info.block_info.len() {
         let block_info = &zsync_file_info.block_info[idx];
         let mut hash = block_info.rsum;
-        //info!("++hash: {}", hash);
+
         rsum_list[hash as usize] = 1;
         if seq_matches && idx + 1 < zsync_file_info.block_info.len() {
             // Combine rsum and rsum of following block
@@ -512,7 +514,6 @@ fn rs_get_patch_instructions(
         // If current rsum is found in map, also check md4.
         // Add matches to patch_instructions.
         loop {
-            //info!("-- loop -- {} {} {}", pos, end_pos, file_size);
             let new_percent: u8 = ((pos as f64 / end_pos as f64) * 100.0) as u8;
             if new_percent != percent || pos == 0 || pos >= end_pos {
                 percent = new_percent;
@@ -538,7 +539,6 @@ fn rs_get_patch_instructions(
 
             // Fill the buffer with chars until the block size is reached.
             let add_chars = buffer_size - buf.len();
-            //////////////info!("add_chars {}", add_chars);
             while buf.len() < buffer_size {
                 let _byte = read_it.next();
                 if _byte.is_none() {
@@ -550,14 +550,13 @@ fn rs_get_patch_instructions(
                 }
                 pos += 1;
             }
-            //////////////info!("size {} pos {} buf.len() {}", size, pos, buf.len());
 
             if add_chars == 1 {
                 // Only one char added, update the rolling checksum
                 let char = buf[block_size - 1];
-                rsum = _update_rsum(rsum, removed_char, char);
+                rsum = _update_rsum(rsum, removed_char, char, block_size as u16);
                 if seq_matches {
-                    next_rsum = _update_rsum(next_rsum, char, added_char);
+                    next_rsum = _update_rsum(next_rsum, char, added_char, block_size as u16);
                 }
             } else {
                 // More than one char added to buffer, calculate new rsum
@@ -576,9 +575,6 @@ fn rs_get_patch_instructions(
             let mut hash = rsum & rsum_mask;
             let mut rsum_list_match = false;
 
-            //use std::str;
-            //info!("buf {}", str::from_utf8(&buf).unwrap());
-            //info!("-- hash {}", hash);
             // First look into the rsum_list (fast negative check)
             rsum_list_lookups += 1;
             if rsum_list[hash as usize] != 0 {
@@ -593,7 +589,6 @@ fn rs_get_patch_instructions(
                 }
             }
             if rsum_list_match {
-                //info!("rsum_list_match {}", pos);
                 let entry = map.get(&hash);
                 rsum_map_lookups += 1;
                 if entry.is_some() {
