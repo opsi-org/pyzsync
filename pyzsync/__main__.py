@@ -75,7 +75,7 @@ def zsync(url: str, *, username: str | None = None, password: str | None = None)
 				print("")
 			zsync_info = read_zsync_file(zsync_file)
 	else:
-		zsync_info = read_zsync_file(url_obj.path)
+		zsync_info = read_zsync_file(Path(url_obj.path))
 
 	local_files = [Path(Path(zsync_info.filename).name).absolute()]
 	local_files.extend(local_files[0].parent.glob(f"{local_files[0].name}.zsync-tmp-*"))
@@ -107,6 +107,7 @@ def zsync(url: str, *, username: str | None = None, password: str | None = None)
 			self.last_completed = completed
 
 	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
+		patcher: Patcher
 		if url_obj.scheme == "file":
 			patcher = FilePatcher(instructions, target_file, Path(rurl.split("://", 1)[1]))
 		else:
