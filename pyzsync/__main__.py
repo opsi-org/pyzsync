@@ -31,7 +31,7 @@ def zsyncmake(file_path: Path) -> None:
 	create_zsync_file(file=file_path, zsync_file=file_path.with_name(f"{file_path.name}.zsync"))
 
 
-def zsync(url: str, *, username: str | None = None, password: str | None = None) -> None:
+def zsync(url: str, *, files: list[Path] | None = None, username: str | None = None, password: str | None = None) -> None:
 	if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
 		url = f"file://{Path(url).absolute()}"
 	url_obj = urlparse(url)
@@ -79,6 +79,7 @@ def zsync(url: str, *, username: str | None = None, password: str | None = None)
 
 	local_files = [Path(Path(zsync_info.filename).name).absolute()]
 	local_files.extend(local_files[0].parent.glob(f"{local_files[0].name}.zsync-tmp-*"))
+	local_files.extend(files)
 
 	print(f"Analyzing {len(local_files)} local file{'s' if len(local_files) > 1 else ''}...")
 	instructions = get_patch_instructions(zsync_info, local_files)
@@ -145,6 +146,7 @@ def main() -> None:
 	p_zsync.add_argument("zsync_url", help="URL to the zsync file")
 	p_zsync.add_argument("--username", help="HTTP basic auth username")
 	p_zsync.add_argument("--password", help="HTTP basic auth password")
+	p_zsync.add_argument("--files", nargs="+", metavar="FILE", default=[], help="Additional local files to scan for usable blocks")
 
 	p_compare = subparsers.add_parser("compare", help="Compare two files")
 	p_compare.add_argument("file", help="Path to the file", nargs=2)
@@ -158,7 +160,7 @@ def main() -> None:
 		return zsyncmake(Path(args.file))
 
 	if args.command == "zsync":
-		return zsync(args.zsync_url, username=args.username, password=args.password)
+		return zsync(args.zsync_url, files=[Path(f) for f in args.files], username=args.username, password=args.password)
 
 	if args.command == "compare":
 		return compare(Path(args.file[0]), Path(args.file[1]))
