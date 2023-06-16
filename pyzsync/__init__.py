@@ -270,7 +270,9 @@ class HTTPPatcher(Patcher):
 		while True:
 			if not raw_data and (not self._content_range or range_pos >= self._content_range.end):
 				if self._current_instructions:
-					missed_instructions = [inst for inst in self._current_instructions.values() if inst not in self._instructions_processed]
+					missed_instructions = [
+						inst for insts in self._current_instructions.values() for inst in insts if inst not in self._instructions_processed
+					]
 					if missed_instructions:
 						raise RuntimeError(
 							f"The following instructions have not been processed: {missed_instructions} (requests: {self._requests})"
