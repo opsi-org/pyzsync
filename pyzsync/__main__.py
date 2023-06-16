@@ -79,7 +79,8 @@ def zsync(url: str, *, files: list[Path] | None = None, username: str | None = N
 
 	local_files = [Path(Path(zsync_info.filename).name).absolute()]
 	local_files.extend(local_files[0].parent.glob(f"{local_files[0].name}.zsync-tmp-*"))
-	local_files.extend(files)
+	if files:
+		local_files.extend(files)
 
 	print(f"Analyzing {len(local_files)} local file{'s' if len(local_files) > 1 else ''}...")
 	instructions = get_patch_instructions(zsync_info, local_files)
