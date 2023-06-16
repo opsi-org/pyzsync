@@ -168,7 +168,8 @@ class HTTPPatcher(Patcher):
 		url: str,
 		*,
 		headers: CaseInsensitiveDict | dict[str, str] | None = None,
-		max_ranges_per_request: int = 100,
+		# Max header size ~4k
+		max_ranges_per_request: int = 50,
 		read_timeout: int = 8 * 3600,
 	) -> None:
 		super().__init__(instructions, target_file)
@@ -177,7 +178,6 @@ class HTTPPatcher(Patcher):
 		self._headers["Accept-Encoding"] = "identity"
 		self._read_timeout = read_timeout
 
-		# Max header size ~4k
 		self._requests: list[dict[Range, list[PatchInstruction]]] = []
 		for source_range, instructions in instructions_by_source_range(self._instructions).items():
 			if not self._requests or len(self._requests[-1]) == max_ranges_per_request:
@@ -269,6 +269,13 @@ class HTTPPatcher(Patcher):
 
 		while True:
 			if not raw_data and (not self._content_range or range_pos >= self._content_range.end):
+				if self._current_instructions:
+					missed_instructions = [inst for inst in self._current_instructions.values() if inst not in self._instructions_processed]
+					if missed_instructions:
+						raise RuntimeError(
+							f"The following instructions have not been processed: {missed_instructions} (requests: {self._requests})"
+						)
+
 				if self._request_index >= len(self._requests) - 1:
 					break
 				self._request()
