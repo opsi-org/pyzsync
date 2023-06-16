@@ -4,6 +4,7 @@
 
 import argparse
 import logging
+import random
 import sys
 from base64 import b64encode
 from http.client import HTTPConnection, HTTPSConnection
@@ -136,6 +137,29 @@ def compare(file1: Path, file2: Path) -> None:
 	print(f"{file2} contains {ratio:.2f}% of data to create {file1}")
 
 
+def destroy(file: Path) -> None:
+	tmp_file = file.with_name(f"{file.name}.zsync-destroy")
+	chunk_size = 100_000
+	file_size = file.stat().st_size
+	if file_size < chunk_size:
+		chunk_size = int(file_size / 8)
+	with (open(file, "rb") as src, open(tmp_file, "wb") as dst):
+		while data := src.read(chunk_size):
+			rand = random.randint(1, 7)
+			if rand == 1:
+				dst.write(random.randbytes(len(data)))
+			elif rand == 2:
+				dst.write(random.randbytes(int(len(data) / 3)))
+			elif rand in (3, 4):
+				continue
+			else:
+				dst.write(data)
+
+	file.unlink()
+	tmp_file.rename(file)
+	print(f"File {file} destroyed")
+
+
 def main() -> None:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--log-level", choices=["debug", "info", "warning", "error", "critical"], default="warning")
@@ -154,6 +178,9 @@ def main() -> None:
 	p_compare = subparsers.add_parser("compare", help="Compare two files")
 	p_compare.add_argument("file", help="Path to the file", nargs=2)
 
+	p_destroy = subparsers.add_parser("destroy", help="Destroy a file (overwrite and remove parts of the file)")
+	p_destroy.add_argument("file", help="Path to the file")
+
 	args = parser.parse_args()
 
 	logging.basicConfig(format="[%(levelno)d] [%(asctime)s.%(msecs)03d] %(message)s   (%(filename)s:%(lineno)d)")
@@ -168,12 +195,17 @@ def main() -> None:
 	if args.command == "compare":
 		return compare(Path(args.file[0]), Path(args.file[1]))
 
+	if args.command == "destroy":
+		return destroy(Path(args.file))
+
 	parser.print_help()
 
 
 if __name__ == "__main__":
 	try:
 		main()
+	except SystemExit as err:
+		sys.exit(err.code)
 	except BaseException as err:
 		print(err, file=sys.stderr)
 		sys.exit(1)
