@@ -250,6 +250,47 @@ def test_get_patch_instructions(tmp_path: Path) -> None:
 	assert sha1.hex() == info.sha1.hex()
 
 
+@pytest.mark.parametrize(
+	"file_size_remote, file_size_local",
+	(
+		(1, 0),
+		(100, 0),
+		(1024, 0),
+		(2048, 0),
+		(3000, 0),
+		(4096, 0),
+		(5000, 0),
+		(1, 1),
+		(1, 100),
+		(1, 2048),
+		(100, 100),
+		(1024, 100),
+		(2048, 2048),
+		(3000, 2048),
+		(4096, 4096),
+		(5000, 100),
+	),
+)
+def test_patch_instructions_zero_file(tmp_path: Path, file_size_remote: int, file_size_local: int) -> None:
+	remote_file = tmp_path / "remote"
+	local_file = tmp_path / "local"
+	zsync_file = tmp_path / "remote.zsync"
+
+	remote_file.write_bytes(b"\0" * file_size_remote)
+	local_file.write_bytes(b"\0" * file_size_local)
+
+	create_zsync_file(remote_file, zsync_file)
+	info = read_zsync_file(zsync_file)
+	instructions = get_patch_instructions(info, local_file)
+
+	def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
+		return FilePatcher(instructions=instructions, target_file=target_file, source_file=remote_file)
+
+	sha1 = patch_file(local_file, instructions, patcher_factory)
+	assert sha1 == info.sha1
+	assert local_file.read_bytes() == remote_file.read_bytes()
+
+
 @pytest.mark.posix
 def test_calc_block_infos(tmp_path: Path) -> None:
 	# git config --global core.autocrlf false

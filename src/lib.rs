@@ -497,6 +497,9 @@ fn rs_get_patch_instructions(
         let file = File::open(file_path)?;
         let metadata = file.metadata()?;
         let file_size = metadata.len();
+        if file_size == 0 {
+            continue;
+        }
         let reader = BufReader::new(file);
         let mut read_it = reader.bytes();
         let buffer_size = block_size * 2;
@@ -603,18 +606,21 @@ fn rs_get_patch_instructions(
                         checksum_matches += 1;
                         //debug!("Matching md4: {:?}", block_infos);
                         for block_info in block_infos.unwrap() {
-                            // A file can contain several blocks with matching md4 sums.
-                            // Check if block ID was already handled in the instructions.
-                            if !block_ids_found.contains(&block_info.block_id) {
-                                // Add current file offsets to instructions
-                                patch_instructions.push(PatchInstruction {
-                                    source: file_id as i8,
-                                    source_offset: pos - buffer_size as u64,
-                                    target_offset: block_info.offset,
-                                    size: block_info.size as u64,
-                                });
-                                // Add the ID of the block to the list of block IDs found
-                                block_ids_found.insert(block_info.block_id);
+                            if pos - buffer_size as u64 + block_info.size as u64 <= file_size {
+                                // A file can contain several blocks with matching md4 sums.
+                                // Check if block ID was already handled in the instructions.
+                                if !block_ids_found.contains(&block_info.block_id) {
+                                    // Add current file offsets to instructions
+                                    patch_instructions.push(PatchInstruction {
+                                        source: file_id as i8,
+                                        source_offset: pos - buffer_size as u64,
+                                        target_offset: block_info.offset,
+                                        size: block_info.size as u64,
+                                    });
+
+                                    // Add the ID of the block to the list of block IDs found
+                                    block_ids_found.insert(block_info.block_id);
+                                }
                             }
                         }
                         // Remove on block from buffer to read a full block size on next iteration
