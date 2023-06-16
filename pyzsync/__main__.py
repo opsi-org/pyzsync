@@ -32,6 +32,8 @@ def zsyncmake(file_path: Path) -> None:
 
 
 def zsync(url: str, *, files: list[Path] | None = None, username: str | None = None, password: str | None = None) -> None:
+	if not url.endswith(".zsync"):
+		print(f"Warning: URL does not end with .zsync")
 	if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
 		url = f"file://{Path(url).absolute()}"
 	url_obj = urlparse(url)
