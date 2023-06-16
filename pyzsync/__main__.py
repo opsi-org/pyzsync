@@ -89,7 +89,7 @@ def zsync(url: str, *, files: list[Path] | None = None, username: str | None = N
 	instructions = get_patch_instructions(zsync_info, local_files)
 	remote_bytes = sum(i.size for i in instructions if i.source == SOURCE_REMOTE)
 	ratio = remote_bytes * 100 / zsync_info.length
-	print(f"Need to fetch {remote_bytes} bytes ({ratio:.2f}%)")
+	print(f"Need to fetch {remote_bytes} bytes ({ratio:.2f} %)")
 
 	path = url_obj.path.split("/")
 	path[-1] = zsync_info.url.split("/")[-1]
@@ -126,7 +126,7 @@ def zsync(url: str, *, files: list[Path] | None = None, username: str | None = N
 	if sha1 != zsync_info.sha1:
 		raise RuntimeError(f"SHA1 mismatch: {sha1.hex()} != {zsync_info.sha1.hex()}")
 
-	print(f"Successfully created {local_files[0]}")
+	print(f"Successfully created {local_files[0]} (reduction: {100-ratio:.2f} %)")
 
 
 def compare(file1: Path, file2: Path) -> None:

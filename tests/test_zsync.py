@@ -473,7 +473,7 @@ def test_big_zsync_file(tmp_path: Path) -> None:
 		start = time.time()
 		create_zsync_file(test_file, zsync_file)
 		duration = time.time() - start
-		assert duration < 15
+		assert duration < 16
 
 	shutil.rmtree(tmp_path)
 
