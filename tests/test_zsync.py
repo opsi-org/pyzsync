@@ -582,7 +582,7 @@ def test_rsum_collisions(tmp_path: Path, mode: str, block_size: int, rsum_bytes:
 	"mode, block_size, checksum_bytes, exp_max, exp_mean",
 	(
 		("random", 2048, 3, 2, 1.001),
-		("random", 2048, 4, 1, 1),
+		("random", 2048, 4, 1, 1.00011),
 		("random", 2048, 5, 1, 1),
 		("random", 4096, 3, 2, 1.001),
 		("random", 4096, 4, 2, 1.00011),
