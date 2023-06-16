@@ -187,6 +187,7 @@ def test_hash_speed(tmp_path: Path) -> None:
 	shutil.rmtree(tmp_path)
 
 
+@pytest.mark.posix
 def test_get_patch_instructions(tmp_path: Path) -> None:
 	remote_file = Path("tests/data/test.small")
 	local_file = tmp_path / "test.small"
