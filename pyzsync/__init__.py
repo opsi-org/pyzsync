@@ -230,7 +230,7 @@ class HTTPPatcher(Patcher):
 		ranges = []
 		new_request_instructions = []
 		# Limit number of ranges per request.
-		# Different web servers allow different number of ranges per request and diggerent header sizes.
+		# Different web servers allow different number of ranges per request and different header sizes.
 		# If number of ranges exceeds the limit, Apache will not indicate an error
 		# but limit the number of ranges returned.
 		for inst in self._pending_instructions:
