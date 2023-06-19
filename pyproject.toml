@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyzsync"
-version = "0.9.1"
+version = "0.9.2"
 description = "zsync for python"
 homepage = "https://www.opsi.org"
 license = "AGPL-3.0"

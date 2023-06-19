@@ -168,8 +168,7 @@ class HTTPPatcher(Patcher):
 		url: str,
 		*,
 		headers: CaseInsensitiveDict | dict[str, str] | None = None,
-		# Max header size ~4k
-		max_ranges_per_request: int = 50,
+		max_ranges_per_request: int = 30,
 		read_timeout: int = 8 * 3600,
 	) -> None:
 		super().__init__(instructions, target_file)
@@ -177,17 +176,14 @@ class HTTPPatcher(Patcher):
 		self._headers = headers if isinstance(headers, CaseInsensitiveDict) else CaseInsensitiveDict(headers)
 		self._headers["Accept-Encoding"] = "identity"
 		self._read_timeout = read_timeout
+		self._max_ranges_per_request = max_ranges_per_request
 
-		self._requests: list[dict[Range, list[PatchInstruction]]] = []
-		for source_range, instructions in instructions_by_source_range(self._instructions).items():
-			if not self._requests or len(self._requests[-1]) == max_ranges_per_request:
-				self._requests.append({source_range: instructions})
-			else:
-				self._requests[-1][source_range] = instructions
-		self._instructions_processed: list[PatchInstruction] = []
-		self._request_index = -1
+		self._pending_instructions = instructions.copy()
+		self._request_instructions: list[PatchInstruction] = []
+		self._part_instructions: list[PatchInstruction] = []
+
+		self._request_number = 0
 		self._content_range: Range | None = None
-		self._current_instructions: dict[Range, list[PatchInstruction]] = {}
 		self._part_index = -1
 		self._in_body = False
 		self._boundary = b""
@@ -215,28 +211,42 @@ class HTTPPatcher(Patcher):
 		try:
 			start_end = range.split("/", 1)[0].split("-")
 			self._content_range = Range(int(start_end[0].strip()), int(start_end[1].strip()))
-			self._current_instructions = {
-				source_range: instructions
-				for source_range, instructions in self._requests[self._request_index].items()
-				if source_range.start >= self._content_range.start and source_range.end <= self._content_range.end
-			}
-			if not self._current_instructions:
-				raise RuntimeError(
-					f"Content-Range {content_range} does not match any requested range {self._requests[self._request_index]}"
-				)
+			self._part_instructions = [
+				inst
+				for inst in self._request_instructions
+				if inst.source_offset >= self._content_range.start and inst.source_offset + inst.size - 1 <= self._content_range.end
+			]
+			if not self._part_instructions:
+				raise RuntimeError(f"Content-Range {content_range} does not match any requested ranges {self._request_instructions}")
 		except Exception as err:
 			raise RuntimeError(f"Failed to parse Content-Range: {err}") from err
 
 	def _request(self) -> None:
-		self._request_index += 1
+		self._request_number += 1
 		self._content_range = None
 		self._part_index = -1
 		self._boundary = b""
 		self._in_body = True
-		byte_ranges = ", ".join(f"{r.start}-{r.end}" for r in self._requests[self._request_index])
+		ranges = []
+		new_request_instructions = []
+		# Limit number of ranges per request.
+		# Different web servers allow different number of ranges per request and diggerent header sizes.
+		# If number of ranges exceeds the limit, Apache will not indicate an error
+		# but limit the number of ranges returned.
+		for inst in self._pending_instructions:
+			new_request_instructions.append(inst)
+			ranges.append(f"{inst.source_offset}-{inst.source_offset + inst.size - 1}")
+			if len(ranges) >= self._max_ranges_per_request:
+				break
+
+		if new_request_instructions == self._request_instructions:
+			raise RuntimeError(f"Did not process any instructions with the last request ({self._request_instructions})")
+
+		self._request_instructions = new_request_instructions
+		byte_ranges = ", ".join(ranges)
 		self._headers["Range"] = f"bytes={byte_ranges}"
 
-		logger.info("Sending GET request #%d to %s", self._request_index + 1, self._url.geturl())
+		logger.info("Sending GET request #%d to %s", self._request_number, self._url.geturl())
 		logger.debug("Sending GET request with headers: %r", self._headers)
 		response_code, response_headers = self._send_request()
 		logger.debug("Received response: %r, headers: %r", response_code, response_headers)
@@ -263,23 +273,15 @@ class HTTPPatcher(Patcher):
 			self._set_content_range(content_range)
 
 	def run(self) -> None:
-		raw_data = b""
-		range_pos = -1
 		boundary_len = 0
+		raw_data = b""
+		range_pos = self._content_range.start if self._content_range else -1
 
 		while True:
 			if not raw_data and (not self._content_range or range_pos >= self._content_range.end):
-				if self._current_instructions:
-					missed_instructions = [
-						inst for insts in self._current_instructions.values() for inst in insts if inst not in self._instructions_processed
-					]
-					if missed_instructions:
-						raise RuntimeError(
-							f"The following instructions have not been processed: {missed_instructions} (requests: {self._requests})"
-						)
-
-				if self._request_index >= len(self._requests) - 1:
+				if not self._pending_instructions:
 					break
+
 				self._request()
 				boundary_len = len(self._boundary)
 				raw_data = b""
@@ -346,9 +348,10 @@ class HTTPPatcher(Patcher):
 			# TODO: optimize! memoryview?
 			data_start = range_pos
 			data_end = range_pos + data_len - 1
-			for rng, instructions in self._current_instructions.items():
-				s_diff = rng.start - data_start
-				e_diff = rng.end - data_end
+			completed_instructions = []
+			for inst in self._part_instructions:
+				s_diff = inst.source_offset - data_start
+				e_diff = inst.source_offset + inst.size - 1 - data_end
 
 				rng_data = data
 				if s_diff > 0:
@@ -356,19 +359,22 @@ class HTTPPatcher(Patcher):
 				if e_diff < 0:
 					rng_data = rng_data[:e_diff]
 
-				for inst in instructions:
-					seek = inst.target_offset
-					if s_diff < 0:
-						seek += s_diff * -1
-					self._target_file.seek(seek)
-					self._target_file.write(rng_data)
+				seek = inst.target_offset
+				if s_diff < 0:
+					seek += s_diff * -1
+				self._target_file.seek(seek)
+				self._target_file.write(rng_data)
 
-					if seek + len(rng_data) == inst.target_offset + inst.size:
-						logger.debug("Instruction %r was processed", inst)
-						if inst in self._instructions_processed:
-							logger.warning("Instruction %r was processed more than once", inst)
-						else:
-							self._instructions_processed.append(inst)
+				if seek + len(rng_data) == inst.target_offset + inst.size:
+					logger.debug("Instruction %r was processed", inst)
+					completed_instructions.append(inst)
+
+			for inst in completed_instructions:
+				self._part_instructions.remove(inst)
+				if inst in self._pending_instructions:
+					self._pending_instructions.remove(inst)
+				else:
+					logger.warning("Instruction %r was processed more than once", inst)
 
 			range_pos += data_len
 			self.total_position += data_len
@@ -376,10 +382,6 @@ class HTTPPatcher(Patcher):
 				self.total_position = self.total_size
 
 			self._call_progress_listeners()
-
-		missed_instructions = [inst for inst in self._instructions if inst not in self._instructions_processed]
-		if missed_instructions:
-			raise RuntimeError(f"The following instructions have not been processed: {missed_instructions}")
 
 
 def md4(block: bytes, num_bytes: int = 16) -> bytes:
