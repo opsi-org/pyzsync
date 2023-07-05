@@ -422,9 +422,10 @@ fn rs_calc_block_infos(
 
 #[pyfunction]
 fn rs_get_patch_instructions(
+    py: Python<'_>,
     zsync_file_info: ZsyncFileInfo,
     file_paths: Vec<PathBuf>,
-    py: Python<'_>,
+    progress_callback: PyObject,
 ) -> PyResult<Vec<PatchInstruction>> {
     // Get a list of instructions, based on the zsync file info,
     // to build the remote file, using as much as possible data from the local file.
@@ -532,6 +533,14 @@ fn rs_get_patch_instructions(
                     checksum_lookups,
                     checksum_matches
                 );
+                if !progress_callback.is_none(py) {
+                    let abort: PyObject = progress_callback
+                        .call(py, (pos, end_pos), None)?
+                        .extract(py)?;
+                    if abort.is_true(py)? {
+                        return Err(PyRuntimeError::new_err("Aborted by progress callback"));
+                    }
+                }
             }
 
             if pos >= end_pos as u64 {

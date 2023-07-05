@@ -420,10 +420,13 @@ def create_zsync_info(file: Path, *, legacy_mode: bool = True) -> ZsyncFileInfo:
 	return rs_create_zsync_info(file, legacy_mode)
 
 
-def get_patch_instructions(zsync_info: ZsyncFileInfo, files: Path | list[Path]) -> list[PatchInstruction]:
+def get_patch_instructions(
+	zsync_info: ZsyncFileInfo, files: Path | list[Path], progress_callback: Callable | None = None
+) -> list[PatchInstruction]:
 	if not isinstance(files, list):
 		files = [files]
-	return rs_get_patch_instructions(zsync_info, files)
+	progress_callback = progress_callback or None
+	return rs_get_patch_instructions(zsync_info, files, progress_callback)
 
 
 def patch_file(

@@ -237,6 +237,23 @@ def test_get_patch_instructions(tmp_path: Path) -> None:
 	sha1 = patch_file(local_file, instructions, patcher_factory)
 	assert sha1.hex() == info.sha1.hex()
 
+	# Test callback
+	positions = []
+
+	def progress_callback(pos: int, total: int) -> None:
+		nonlocal positions
+		positions.append((pos, total))
+
+	instructions = get_patch_instructions(info, local_file, progress_callback)
+	assert positions == [(0, 12288), (4096, 12288), (6144, 12288), (8192, 12288), (10240, 12288), (12288, 12288)]
+
+	def progress_callback_abort(pos: int, total: int) -> bool:
+		return pos > 0
+
+	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
+		instructions = get_patch_instructions(info, local_file, progress_callback_abort)
+
+	# Test with seq_matches = 2
 	info.seq_matches = 2
 	local_file.write_bytes(data[:2048])
 	instructions = get_patch_instructions(info, local_file)
