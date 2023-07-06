@@ -103,6 +103,10 @@ class Patcher:
 		self._ps_last_position = 0
 		self._progress_listeners: list[ProgressListener] = []
 		self._progress_listener_lock = Lock()
+		self._abort = False
+
+	def abort(self):
+		self._abort = True
 
 	def register_progress_listener(self, listener: ProgressListener) -> None:
 		with self._progress_listener_lock:
@@ -140,6 +144,8 @@ class FilePatcher(Patcher):
 	def run(self) -> None:
 		with self._source_file.open("rb") as sfh:
 			for source_range, instructions in instructions_by_source_range(self._instructions).items():
+				if self._abort:
+					raise RuntimeError("Aborted")
 				sfh.seek(source_range.start)
 				bytes_read = 0
 				while bytes_read < source_range.size:
@@ -278,6 +284,9 @@ class HTTPPatcher(Patcher):
 		range_pos = self._content_range.start if self._content_range else -1
 
 		while True:
+			if self._abort:
+				raise RuntimeError("Aborted")
+
 			if not raw_data and (not self._content_range or range_pos >= self._content_range.end):
 				if not self._pending_instructions:
 					break

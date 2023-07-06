@@ -759,6 +759,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	remote_file = tmp_path / "remote"
 	remote_zsync_file = tmp_path / "remote.zsync"
 	local_file = tmp_path / "local"
+	local_file_bak = tmp_path / "local.bak"
 
 	block_count = 10
 	block_size = 2048
@@ -768,6 +769,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			rfile.write(block_data)
 			if block_id in (1, 2, 3, 7):
 				lfile.write(block_data)
+	shutil.copy(local_file, local_file_bak)
 
 	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 	zsync_info = read_zsync_file(remote_zsync_file)
@@ -789,6 +791,8 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	remote_bytes = sum(i.size for i in instructions if i.source == SOURCE_REMOTE)
 
 	class MyProgressListener(ProgressListener):
+		abort_position = -1
+
 		def __init__(self) -> None:
 			self.position = 0
 			self.total = 0
@@ -797,6 +801,8 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			self.position = position
 			self.total = total
 			print(f"{self.position}/{self.total} ({per_second/1000:.2f} kB/s)")
+			if self.abort_position > 0 and self.position >= self.abort_position:
+				patcher.abort()
 
 	with http_server(tmp_path) as port:
 
@@ -827,6 +833,25 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	speedup = (zsync_info.length - remote_bytes) * 100 / zsync_info.length
 	print(f"Speedup: {speedup} %")
 	assert round(speedup) == 42
+
+	# Restore the original local_file and test abort
+	shutil.copy(local_file_bak, local_file)
+
+	with http_server(tmp_path) as port:
+		progress_listener = MyProgressListener()
+		progress_listener.abort_position = int(block_size / block_count / 2)
+		http_patcher: HTTPPatcher | None = None
+
+		def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
+			nonlocal http_patcher
+			http_patcher = HTTPPatcher(
+				instructions=instructions, target_file=target_file, url=f"http://localhost:{port}/remote", max_ranges_per_request=1
+			)
+			http_patcher.register_progress_listener(progress_listener)
+			return http_patcher
+
+		with pytest.raises(RuntimeError, match="Aborted"):
+			patch_file(local_file, instructions, patcher_factory, return_hash="sha256")
 
 	shutil.rmtree(tmp_path)
 
