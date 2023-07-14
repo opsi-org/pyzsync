@@ -105,7 +105,7 @@ class Patcher:
 		self._progress_listener_lock = Lock()
 		self._abort = False
 
-	def abort(self):
+	def abort(self) -> None:
 		self._abort = True
 
 	def register_progress_listener(self, listener: ProgressListener) -> None:
@@ -430,12 +430,42 @@ def create_zsync_info(file: Path, *, legacy_mode: bool = True) -> ZsyncFileInfo:
 
 
 def get_patch_instructions(
-	zsync_info: ZsyncFileInfo, files: Path | list[Path], progress_callback: Callable | None = None
+	zsync_info: ZsyncFileInfo, files: Path | list[Path], *, progress_callback: Callable | None = None, optimized: bool = False
 ) -> list[PatchInstruction]:
 	if not isinstance(files, list):
 		files = [files]
 	progress_callback = progress_callback or None
-	return rs_get_patch_instructions(zsync_info, files, progress_callback)
+	instructions = rs_get_patch_instructions(zsync_info, files, progress_callback)
+	if optimized:
+		return optimize_instructions(instructions)
+	return instructions
+
+
+def optimize_instructions(instructions: list[PatchInstruction], min_remote_gap: int = 16384) -> list[PatchInstruction]:
+	instructions.sort(key=lambda i: i.target_offset)
+	r_insts = [i for i in instructions if i.source == SOURCE_REMOTE]
+	remote_instructions: list[PatchInstruction] = []
+	for idx in range(len(r_insts)):
+		if idx > 0:
+			gap = r_insts[idx].source_offset - (r_insts[idx - 1].source_offset + r_insts[idx - 1].size)
+			if gap < min_remote_gap:
+				remote_instructions[-1].size += gap + r_insts[idx].size
+				continue
+		remote_instructions.append(r_insts[idx].copy())
+
+	local_instructions: list[PatchInstruction] = []
+	for l_inst in instructions:
+		if l_inst.source == SOURCE_REMOTE:
+			continue
+		needed = True
+		for r_inst in remote_instructions:
+			if l_inst.target_offset >= r_inst.target_offset and l_inst.target_offset + l_inst.size <= r_inst.target_offset + r_inst.size:
+				needed = False
+				break
+		if needed:
+			local_instructions.append(l_inst.copy())
+
+	return sorted(remote_instructions + local_instructions, key=lambda i: i.target_offset)
 
 
 def patch_file(

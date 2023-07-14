@@ -7,6 +7,7 @@ use chrono::prelude::*;
 use log::{debug, info, warn};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pyclass::CompareOp;
 use pyo3::{types::PyBytes, wrap_pyfunction};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
@@ -222,6 +223,28 @@ impl PatchInstruction {
     fn size(&self) -> PyResult<u64> {
         Ok(self.size)
     }
+
+    #[setter]
+    fn set_source(&mut self, value: i8) -> PyResult<()> {
+        self.source = value;
+        Ok(())
+    }
+    #[setter]
+    fn set_source_offset(&mut self, value: u64) -> PyResult<()> {
+        self.source_offset = value;
+        Ok(())
+    }
+    #[setter]
+    fn set_target_offset(&mut self, value: u64) -> PyResult<()> {
+        self.target_offset = value;
+        Ok(())
+    }
+    #[setter]
+    fn set_size(&mut self, value: u64) -> PyResult<()> {
+        self.size = value;
+        Ok(())
+    }
+
     fn __repr__(&self) -> String {
         let mut src = format!("file#{}", self.source);
         if self.source == SOURCE_REMOTE {
@@ -231,6 +254,35 @@ impl PatchInstruction {
             "PatchInstruction(source={}, source_offset={}, size={}, target_offset={})",
             src, self.source_offset, self.size, self.target_offset
         )
+    }
+
+    fn __richcmp__(&self, other: PyRef<PatchInstruction>, op: CompareOp) -> Py<PyAny> {
+        let py = other.py();
+        match op {
+            CompareOp::Eq => (self.source == other.source
+                && self.source_offset == other.source_offset
+                && self.target_offset == other.target_offset
+                && self.size == other.size)
+                .into_py(py),
+            CompareOp::Ne => (self.source != other.source
+                || self.source_offset != other.source_offset
+                || self.target_offset != other.target_offset
+                || self.size != other.size)
+                .into_py(py),
+            _ => py.NotImplemented(),
+        }
+    }
+
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn __deepcopy__(&self) -> Self {
+        self.clone()
     }
 }
 

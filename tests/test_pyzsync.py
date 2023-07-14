@@ -41,6 +41,7 @@ from pyzsync import (
 	get_patch_instructions,
 	instructions_by_source_range,
 	md4,
+	optimize_instructions,
 	patch_file,
 	read_zsync_file,
 	rsum,
@@ -244,14 +245,14 @@ def test_get_patch_instructions(tmp_path: Path) -> None:
 		nonlocal positions
 		positions.append((pos, total))
 
-	instructions = get_patch_instructions(info, local_file, progress_callback)
+	instructions = get_patch_instructions(info, local_file, progress_callback=progress_callback)
 	assert positions == [(0, 12288), (4096, 12288), (6144, 12288), (8192, 12288), (10240, 12288), (12288, 12288)]
 
 	def progress_callback_abort(pos: int, total: int) -> bool:
 		return pos > 0
 
 	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
-		instructions = get_patch_instructions(info, local_file, progress_callback_abort)
+		instructions = get_patch_instructions(info, local_file, progress_callback=progress_callback_abort)
 
 	# Test with seq_matches = 2
 	info.seq_matches = 2
@@ -763,7 +764,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 
 	block_count = 10
 	block_size = 2048
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+	with open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile:
 		for block_id in range(block_count):
 			block_data = randbytes(int(block_size / 2) if block_id == block_count - 1 else block_size)
 			rfile.write(block_data)
@@ -774,6 +775,18 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	create_zsync_file(remote_file, remote_zsync_file, legacy_mode=False)
 	zsync_info = read_zsync_file(remote_zsync_file)
 	zsync_info.seq_matches = 1
+
+	instructions = get_patch_instructions(zsync_info, local_file, optimized=True)
+	for inst in instructions:
+		print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
+
+	# R:0
+	assert len(instructions) == 1
+	assert instructions[0].source == SOURCE_REMOTE
+	assert instructions[0].source_offset == 0
+	assert instructions[0].target_offset == 0
+	assert instructions[0].size == 19456
+
 	instructions = get_patch_instructions(zsync_info, local_file)
 	for inst in instructions:
 		print(inst.source, inst.source_offset, inst.size, "=>", inst.target_offset)
@@ -805,7 +818,6 @@ def test_patch_file_http(tmp_path: Path) -> None:
 				patcher.abort()
 
 	with http_server(tmp_path) as port:
-
 		progress_listener = MyProgressListener()
 		http_patcher: HTTPPatcher | None = None
 
@@ -840,7 +852,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 	with http_server(tmp_path) as port:
 		progress_listener = MyProgressListener()
 		progress_listener.abort_position = int(block_size / block_count / 2)
-		http_patcher: HTTPPatcher | None = None
+		http_patcher = None
 
 		def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
 			nonlocal http_patcher
@@ -854,6 +866,38 @@ def test_patch_file_http(tmp_path: Path) -> None:
 			patch_file(local_file, instructions, patcher_factory, return_hash="sha256")
 
 	shutil.rmtree(tmp_path)
+
+
+def test_optimize_instructions() -> None:
+	instructions = [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=2048),
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=2048, target_offset=2048, size=2048),
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=4096, target_offset=4096, size=2048),
+	]
+	assert optimize_instructions(instructions, min_remote_gap=16384) == [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=6144),
+	]
+
+	instructions = [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=2048),
+		PatchInstruction(source=0, source_offset=2048, target_offset=2048, size=2048),
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=4096, target_offset=4096, size=2048),
+	]
+	assert optimize_instructions(instructions, min_remote_gap=16384) == [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=6144),
+	]
+
+	instructions = [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=2048),
+		PatchInstruction(source=0, source_offset=2048, target_offset=2048, size=2048),
+		PatchInstruction(source=0, source_offset=4096, target_offset=4096, size=4096),
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=8192, target_offset=8192, size=1000),
+	]
+	assert optimize_instructions(instructions, min_remote_gap=16384) == [
+		PatchInstruction(source=SOURCE_REMOTE, source_offset=0, target_offset=0, size=9192),
+	]
+	assert optimize_instructions(instructions, min_remote_gap=2048) == instructions
+	assert optimize_instructions(instructions, min_remote_gap=1) == instructions
 
 
 @pytest.mark.targz_available
@@ -924,7 +968,7 @@ def test_original_zsyncmake_compatibility(tmp_path: Path, file_size: int) -> Non
 
 	block_size = calc_block_size(file_size)
 	block_count = int((file_size + block_size - 1) / block_size)
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+	with open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile:
 		for block_id in range(block_count):
 			data_size = block_size
 			if block_id == block_count - 1:
@@ -985,7 +1029,7 @@ def test_original_zsync_compatibility(tmp_path: Path, file_size: int) -> None:
 	remote_blocks = int(file_size / block_size / 2) * 2
 	local_blocks = int(remote_blocks / 2)
 	local_bytes = local_blocks * block_size
-	with (open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile):
+	with open(remote_file, "wb") as rfile, open(local_file, "wb") as lfile:
 		for _ in range(remote_blocks - local_blocks):
 			data = randbytes(block_size)
 			rfile.write(data)
