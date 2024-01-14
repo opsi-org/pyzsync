@@ -2,18 +2,14 @@
 	"editor.insertSpaces": false,
 	"editor.renderWhitespace": "all",
 	"editor.formatOnSave": true,
-	"editor.codeActionsOnSave": {
-		"source.organizeImports": true,
-	},
 	"editor.formatOnType": true,
-	"python.formatting.provider": "black",
-	"python.formatting.blackPath": ".venv/bin/tan",
-	"python.linting.enabled": true,
-	"python.linting.maxNumberOfProblems": 1000,
-	"python.linting.mypyEnabled": true,
-	"python.linting.mypyArgs": [
-		"--show-error-codes"
-	],
+	"[python]": {
+		"editor.codeActionsOnSave": {
+			"source.fixAll": true,
+			"source.organizeImports": true
+		},
+		"editor.defaultFormatter": "charliermarsh.ruff"
+	},
 	"python.testing.pytestEnabled": true,
 	"files.trimTrailingWhitespace": true,
 	"python.languageServer": "Pylance"
