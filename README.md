@@ -1,26 +1,54 @@
 # pyzsync
 
-## PyO3
-- https://pyo3.rs/v0.18.3/
-- https://github.com/mre/hyperjson
+A Python module written in Rust that implements the [zsync algorithm](http://zsync.moria.org.uk).
 
-## Develop
+## Usage
+
+### Use the Python module as a script
 ```
-poetry run maturin develop --release
-cargo test --no-default-features
-poetry run pytest -vv
+# Show help.
+python -m pyzsync --help
+
+# Create a zsync file.
+poetry run python -m pyzsync zsyncmake bigfile
+
+# Compare two files and show how much data from the first file
+# can be used to create the second file using the zsync algorithm.
+python -m pyzsync compare bigfile1 bigfile2
+
+# Download a file using zsync.
+# This will automatically use blocks from the local files
+# noble-desktop-amd64.iso and noble-desktop-amd64.iso.zsync-tmp-*
+# if available.
+python -m pyzsync zsync https://cdimage.ubuntu.com/daily-live/current/noble-desktop-amd64.iso.zsync
 ```
 
-### rust-analyzer
+### Use the Python module in a script
+```python
+from pyzsync import create_zsync_file
 
-- https://stackoverflow.com/questions/76171390/proc-macro-main-not-expanded-rust-analyzer-not-spawning-server
-- install toolchain (linux)
+create_zsync_file("bigfile", "bigfile.zsync")
+```
+
+See `tests/test_pyzsync.py` and `pyzsync/__main__.py` for more examples.
+
+
+## Development
+Based on [PyO3](https://pyo3.rs)
 
 ```
+# Install toolchain (linux)
 rustup toolchain install beta-x86_64-unknown-linux-gnu
 
-```
-## Build release
-```
+# Build package in debug mode and install it to virtualenv
+poetry run maturin develop --release
+
+# Run cargo test
+cargo test --no-default-features
+
+# Run pytest
+poetry run pytest -vv
+
+# Build release package
 poetry run maturin build --release
 ```
