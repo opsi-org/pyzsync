@@ -104,6 +104,7 @@ pylint-pytest:
 # Python 3.10
 uibpypi-windows-py310-x86:
   stage: publish
+  when: manual
   tags:
     - win10-py310-x86
   script:
@@ -114,8 +115,8 @@ uibpypi-windows-py310-x86:
     - tags
 
 uibpypi-darwin-py310-x64:
-  when: manual
   stage: publish
+  when: manual
   tags:
     - catalina-py310-x64
   script:
