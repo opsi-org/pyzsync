@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu, macos, windows]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    runs-on: ${{ matrix.os }}-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+          args: --release --out dist --interpreter ${{ matrix.python-version }}
+          rust-toolchain: stable
+
+      - run: ${{ matrix.ls || 'ls -lh' }} dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist
+
+  build_sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist
+
+  Release:
+    needs: [ build_wheels, build_sdist ]
+    if: success()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist
+          path: dist
+
+      - uses: Gr1N/setup-poetry@v8
+
+      - name: List dist contents
+        run: ls -la dist
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+
+      - name: Publish to PyPI
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
+        run: poetry publish
