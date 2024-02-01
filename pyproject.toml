@@ -32,5 +32,5 @@ disallow_incomplete_defs = true
 follow_imports = "silent"
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
