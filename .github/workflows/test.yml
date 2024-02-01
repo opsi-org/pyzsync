@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        #os: [ubuntu-latest, macos-latest, windows-latest]
+        #python-version: ["3.9", "3.10", "3.11", "3.12"]
+        os: [ubuntu-latest]
+        python-version: ["3.11"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: Gr1N/setup-poetry@v8
+
+      - name: Build package in debug mode and install it to virtualenv
+        run: |
+          poetry --version
+          poetry run maturin develop --release
+
+      - name: Run cargo test
+        run: cargo test --no-default-features
+
+      - name: Run pytest
+        run: poetry run pytest -vv
