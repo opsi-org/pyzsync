@@ -14,9 +14,10 @@ jobs:
         os: [ubuntu, macos, windows]
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12"]
-      include:
-        - os: windows
-          ls: dir
+        include:
+          - os: windows
+            ls: dir
+
     runs-on: ${{ matrix.os }}-latest
 
     steps:
