@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "pyzsync"
 version = "1.2.0"
-description = "zsync for python"
-homepage = "https://www.opsi.org"
+description = "A Python module written in Rust that implements the zsync algorithm"
+homepage = "https://github.com/opsi-org/pyzsync"
 license = "AGPL-3.0"
 maintainers = ["uib GmbH <info@uib.de>"]
 authors = ["uib GmbH <info@uib.de>"]
