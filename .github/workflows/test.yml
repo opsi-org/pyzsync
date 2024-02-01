@@ -36,6 +36,7 @@ jobs:
       - name: Build package in debug mode and install it to virtualenv
         run: |
           poetry --version
+          poetry install
           poetry run maturin develop --release
 
       - name: Run cargo test
