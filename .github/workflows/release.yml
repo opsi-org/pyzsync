@@ -11,14 +11,14 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu, macos, windows]
+        os: [ubuntu-20.04, macos-latest, windows-latest]
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12"]
         include:
           - os: windows
             ls: dir
 
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
