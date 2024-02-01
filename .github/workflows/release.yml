@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-20.04, macos-latest, windows-latest]
+        os: [ubuntu-22.04, macos-latest, windows-latest]
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12"]
         include:
