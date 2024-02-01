@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyzsync"
-version = "1.2.2"
+version = "1.2.3"
 description = "A Python module written in Rust that implements the zsync algorithm"
 homepage = "https://github.com/opsi-org/pyzsync"
 license = "AGPL-3.0"
@@ -32,5 +32,5 @@ disallow_incomplete_defs = true
 follow_imports = "silent"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
