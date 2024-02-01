@@ -26,6 +26,7 @@ jobs:
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        with:
           args: --release --out dist --interpreter ${{ matrix.python-version }}
           rust-toolchain: stable
 
@@ -52,7 +53,7 @@ jobs:
           path: dist
 
   Release:
-    needs: [ build_wheels, build_sdist ]
+    needs: [build_wheels, build_sdist]
     if: success()
     runs-on: ubuntu-latest
 
