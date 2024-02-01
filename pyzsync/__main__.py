@@ -10,7 +10,7 @@ from base64 import b64encode
 from http.client import HTTPConnection, HTTPSConnection
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import BinaryIO, Optional, Union
+from typing import BinaryIO, Optional
 from urllib.parse import urlparse
 
 from pyzsync import (

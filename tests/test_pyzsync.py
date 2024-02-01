@@ -33,7 +33,6 @@ from pyzsync import (
 	ProgressListener,
 	Range,
 	ZsyncFileInfo,
-	__version__,
 	calc_block_infos,
 	calc_block_size,
 	create_zsync_file,
