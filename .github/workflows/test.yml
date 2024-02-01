@@ -39,6 +39,12 @@ jobs:
           poetry install
           poetry run maturin develop --release
 
+      - name: Run ruff check
+        run: poetry run ruff check pyzsync tests
+
+      - name: Run mypy
+        run: poetry run mypy pyzsync tests
+
       - name: Run cargo test
         run: cargo test --no-default-features
 

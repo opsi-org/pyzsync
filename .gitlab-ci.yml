@@ -76,7 +76,7 @@ pylint-pytest:
     - apt-get --yes install sqlite3
     - poetry install
     - poetry run maturin develop --release
-    - poetry run ruff pyzsync tests
+    - poetry run ruff check pyzsync tests
     - poetry run mypy pyzsync tests
     - for db in coverage_*; do sqlite3 $db 'update file set path=replace(substr(path,instr(path,"pyzsync")),"\","/");'; done
     - echo -e '[run]\nrelative_files = True\n' > .coveragerc
