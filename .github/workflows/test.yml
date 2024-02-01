@@ -31,6 +31,8 @@ jobs:
 
       - uses: Gr1N/setup-poetry@v8
 
+      - uses: PyO3/maturin-action@v1
+
       - name: Build package in debug mode and install it to virtualenv
         run: |
           poetry --version
