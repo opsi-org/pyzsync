@@ -5,7 +5,7 @@ A Python module written in Rust that implements the [zsync algorithm](http://zsy
 ## Usage
 
 ### Use the Python module as a script
-```
+```shell
 # Show help.
 python -m pyzsync --help
 
@@ -33,7 +33,7 @@ create_zsync_file("bigfile", "bigfile.zsync")
 See `tests/test_pyzsync.py` and `pyzsync/__main__.py` for more examples.
 
 
-## Development
+## Build / Development
 Based on [PyO3](https://pyo3.rs)
 
 ```
