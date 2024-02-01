@@ -12,7 +12,16 @@ from http.client import HTTPConnection, HTTPSConnection
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
-from typing import Any, BinaryIO, Callable, Iterator, Literal, NamedTuple
+from typing import (
+	Any,
+	BinaryIO,
+	Callable,
+	Iterator,
+	Literal,
+	NamedTuple,
+	Optional,
+	Union,
+)
 from urllib.parse import urlparse
 
 from pyzsync.pyzsync import (
@@ -173,7 +182,7 @@ class HTTPPatcher(Patcher):
 		target_file: BinaryIO,
 		url: str,
 		*,
-		headers: CaseInsensitiveDict | dict[str, str] | None = None,
+		headers: Optional[Union[CaseInsensitiveDict, dict[str, str]]] = None,
 		max_ranges_per_request: int = 30,
 		read_timeout: int = 8 * 3600,
 	) -> None:
@@ -430,7 +439,7 @@ def create_zsync_info(file: Path, *, legacy_mode: bool = True) -> ZsyncFileInfo:
 
 
 def get_patch_instructions(
-	zsync_info: ZsyncFileInfo, files: Path | list[Path], *, progress_callback: Callable | None = None, optimized: bool = False
+	zsync_info: ZsyncFileInfo, files: Union[Path | list[Path]], *, progress_callback: Optional[Callable] = None, optimized: bool = False
 ) -> list[PatchInstruction]:
 	if not isinstance(files, list):
 		files = [files]
@@ -469,7 +478,7 @@ def optimize_instructions(instructions: list[PatchInstruction], min_remote_gap: 
 
 
 def patch_file(
-	files: Path | list[Path],
+	files: Union[Path, list[Path]],
 	instructions: list[PatchInstruction],
 	patcher_factory: Callable,
 	*,

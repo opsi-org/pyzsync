@@ -10,7 +10,7 @@ from base64 import b64encode
 from http.client import HTTPConnection, HTTPSConnection
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import BinaryIO
+from typing import BinaryIO, Optional, Union
 from urllib.parse import urlparse
 
 from pyzsync import (
@@ -32,7 +32,7 @@ def zsyncmake(file_path: Path) -> None:
 	create_zsync_file(file=file_path, zsync_file=file_path.with_name(f"{file_path.name}.zsync"))
 
 
-def zsync(url: str, *, files: list[Path] | None = None, username: str | None = None, password: str | None = None) -> None:
+def zsync(url: str, *, files: Optional[list[Path]] = None, username: Optional[str] = None, password: Optional[str] = None) -> None:
 	if not url.endswith(".zsync"):
 		print("Warning: URL does not end with .zsync")
 	if not (url.startswith("http://") or url.startswith("https://") or url.startswith("file://")):
@@ -143,7 +143,7 @@ def destroy(file: Path) -> None:
 	file_size = file.stat().st_size
 	if file_size < chunk_size:
 		chunk_size = int(file_size / 8)
-	with (open(file, "rb") as src, open(tmp_file, "wb") as dst):
+	with open(file, "rb") as src, open(tmp_file, "wb") as dst:
 		while data := src.read(chunk_size):
 			rand = random.randint(1, 7)
 			if rand == 1:

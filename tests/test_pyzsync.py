@@ -17,7 +17,7 @@ from socketserver import ThreadingMixIn
 from statistics import mean
 from subprocess import run
 from threading import Thread
-from typing import Any, BinaryIO, Generator, cast
+from typing import Any, BinaryIO, Generator, Optional, cast
 
 import pytest
 from RangeHTTPServer import RangeRequestHandler  # type: ignore[import]
@@ -665,7 +665,7 @@ def test_http_patcher(tmp_path: Path, chunk_size: int) -> None:
 		def _send_request(self) -> tuple[int, CaseInsensitiveDict]:
 			return 206, CaseInsensitiveDict({"Content-Type": "multipart/byteranges; boundary=3d7d9f7d709b"})
 
-		def _read_response_data(self, size: int | None = None) -> bytes:
+		def _read_response_data(self, size: Optional[int] = None) -> bytes:
 			size = size or len(self.data) - self.pos
 			dat = self.data[self.pos : self.pos + size]
 			self.pos += size
@@ -819,7 +819,7 @@ def test_patch_file_http(tmp_path: Path) -> None:
 
 	with http_server(tmp_path) as port:
 		progress_listener = MyProgressListener()
-		http_patcher: HTTPPatcher | None = None
+		http_patcher: Optional[HTTPPatcher] = None
 
 		def patcher_factory(instructions: list[PatchInstruction], target_file: BinaryIO) -> Patcher:
 			nonlocal http_patcher
