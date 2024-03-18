@@ -44,6 +44,9 @@ rustup toolchain install beta-x86_64-unknown-linux-gnu
 poetry install
 poetry run maturin develop --release
 
+# Run clippy
+cargo clippy
+
 # Run cargo test
 cargo test --no-default-features
 
