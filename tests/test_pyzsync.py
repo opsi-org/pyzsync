@@ -1175,7 +1175,7 @@ def test_calc_block_infos_progress(tmp_path: Path) -> None:
 	for idx in range(246):
 		assert progress_callbacks[idx] == (idx, 245) in progress_callbacks
 
-	def progress_callback_abort(block: int, total_blocks: int) -> None:
+	def progress_callback_abort(block: int, total_blocks: int) -> bool:
 		return block > 100
 
 	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
@@ -1197,7 +1197,7 @@ def test_create_zsync_info_progress(tmp_path: Path) -> None:
 	for idx in range(490):
 		assert progress_callbacks[idx] == (idx, 489) in progress_callbacks
 
-	def progress_callback_abort(block: int, total_blocks: int) -> None:
+	def progress_callback_abort(block: int, total_blocks: int) -> bool:
 		return block > 100
 
 	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
@@ -1220,7 +1220,7 @@ def test_create_zsync_file_progress(tmp_path: Path) -> None:
 	for idx in range(490):
 		assert progress_callbacks[idx] == (idx, 489) in progress_callbacks
 
-	def progress_callback_abort(block: int, total_blocks: int) -> None:
+	def progress_callback_abort(block: int, total_blocks: int) -> bool:
 		return block > 100
 
 	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
