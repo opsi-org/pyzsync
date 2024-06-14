@@ -172,7 +172,7 @@ uibpypi-linux-py311-x64:
 uibpypi-linux-py311-arm64:
   stage: publish
   tags:
-    - arm64
+    - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
     - poetry install
@@ -195,7 +195,7 @@ uibpypi-linux-py312-x64:
 uibpypi-linux-py312-arm64:
   stage: publish
   tags:
-    - arm64
+    - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.12
   script:
     - poetry install
