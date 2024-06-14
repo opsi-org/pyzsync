@@ -1172,8 +1172,8 @@ def test_calc_block_infos_progress(tmp_path: Path) -> None:
 		progress_callbacks.append((block, total_blocks))
 
 	calc_block_infos(test_file, 4096, 4, 16, progress_callback=progress_callback)
-	for idx in range(245):
-		assert progress_callbacks[idx] == (idx + 1, 245) in progress_callbacks
+	for idx in range(246):
+		assert progress_callbacks[idx] == (idx, 245) in progress_callbacks
 
 	def progress_callback_abort(block: int, total_blocks: int) -> None:
 		return block > 100
@@ -1194,8 +1194,8 @@ def test_create_zsync_info_progress(tmp_path: Path) -> None:
 		progress_callbacks.append((block, total_blocks))
 
 	create_zsync_info(test_file, progress_callback=progress_callback)
-	for idx in range(489):
-		assert progress_callbacks[idx] == (idx + 1, 489) in progress_callbacks
+	for idx in range(490):
+		assert progress_callbacks[idx] == (idx, 489) in progress_callbacks
 
 	def progress_callback_abort(block: int, total_blocks: int) -> None:
 		return block > 100
@@ -1217,8 +1217,8 @@ def test_create_zsync_file_progress(tmp_path: Path) -> None:
 		progress_callbacks.append((block, total_blocks))
 
 	create_zsync_file(remote_file, zsync_file, progress_callback=progress_callback)
-	for idx in range(489):
-		assert progress_callbacks[idx] == (idx + 1, 489) in progress_callbacks
+	for idx in range(490):
+		assert progress_callbacks[idx] == (idx, 489) in progress_callbacks
 
 	def progress_callback_abort(block: int, total_blocks: int) -> None:
 		return block > 100

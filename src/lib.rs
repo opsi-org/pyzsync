@@ -434,6 +434,11 @@ fn _calc_block_infos(
 	let block_count: u64 = (size + u64::from(block_size) - 1) / u64::from(block_size);
 	let mut block_infos: Vec<BlockInfo> = Vec::new();
 	let mut reader = BufReader::new(file);
+
+	if !progress_callback.is_none(py) {
+		progress_callback.call(py, (0, block_count), None)?;
+	}
+
 	for block_id in 0..block_count {
 		let offset = block_id * block_size as u64;
 		let mut buf_size = block_size as usize;
@@ -489,7 +494,14 @@ fn rs_calc_block_infos(
 	checksum_bytes: u8,
 	progress_callback: PyObject,
 ) -> PyResult<Vec<BlockInfo>> {
-	let result = _calc_block_infos(py, file_path.as_path(), block_size, rsum_bytes, checksum_bytes, progress_callback)?;
+	let result = _calc_block_infos(
+		py,
+		file_path.as_path(),
+		block_size,
+		rsum_bytes,
+		checksum_bytes,
+		progress_callback,
+	)?;
 	Ok(result.0)
 }
 
@@ -831,8 +843,14 @@ fn _create_zsync_info(
 		block_size, rsum_bytes, checksum_bytes
 	);
 
-	let (block_infos, sha1_digest, sha256_digest) =
-		_calc_block_infos(py, file_path.as_path(), block_size, rsum_bytes, checksum_bytes, progress_callback)?;
+	let (block_infos, sha1_digest, sha256_digest) = _calc_block_infos(
+		py,
+		file_path.as_path(),
+		block_size,
+		rsum_bytes,
+		checksum_bytes,
+		progress_callback,
+	)?;
 	let zsync_file_info = ZsyncFileInfo {
 		zsync: ZSYNC_VERSION.to_string(),
 		producer: if legacy_mode {
@@ -864,7 +882,7 @@ fn rs_create_zsync_info(
 	py: Python<'_>,
 	file_path: PathBuf,
 	legacy_mode: bool,
-	progress_callback: PyObject
+	progress_callback: PyObject,
 ) -> PyResult<ZsyncFileInfo> {
 	let zsync_file_info = _create_zsync_info(py, file_path, legacy_mode, progress_callback)?;
 	Ok(zsync_file_info)
