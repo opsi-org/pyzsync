@@ -318,7 +318,7 @@ fn _md4_part(
 	Ok(checksum)
 }
 
-fn _md4(block: &Vec<u8>, num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
+fn _md4(block: &[u8], num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
 	_md4_part(block, num_bytes, 0, block.len())
 }
 
@@ -353,7 +353,7 @@ fn _rsum_part(block: &[u8], num_bytes: u8, offset: usize, len: usize) -> Result<
 	Ok(res)
 }
 
-fn _rsum(block: &Vec<u8>, num_bytes: u8) -> Result<u32, PyErr> {
+fn _rsum(block: &[u8], num_bytes: u8) -> Result<u32, PyErr> {
 	_rsum_part(block, num_bytes, 0, block.len())
 }
 
@@ -393,10 +393,12 @@ fn rs_calc_block_size(file_size: u64) -> u16 {
 
 #[allow(clippy::type_complexity)]
 fn _calc_block_infos(
+	py: Python<'_>,
 	file_path: &Path,
 	block_size: u16,
 	mut rsum_bytes: u8,
 	mut checksum_bytes: u8,
+	progress_callback: PyObject,
 ) -> Result<(Vec<BlockInfo>, [u8; 20], [u8; 32]), PyErr> {
 	if block_size != 2048 && block_size != 4096 {
 		return Err(PyValueError::new_err(format!(
@@ -464,6 +466,14 @@ fn _calc_block_infos(
 			rsum,
 		};
 		block_infos.push(block_info);
+		if !progress_callback.is_none(py) {
+			let abort: PyObject = progress_callback
+				.call(py, (block_id + 1, block_count), None)?
+				.extract(py)?;
+			if abort.is_true(py)? {
+				return Err(PyRuntimeError::new_err("Aborted by progress callback"));
+			}
+		}
 	}
 	let sha1_digest = sha1.finalize();
 	let sha256_digest = sha256.finalize();
@@ -472,12 +482,14 @@ fn _calc_block_infos(
 
 #[pyfunction]
 fn rs_calc_block_infos(
+	py: Python<'_>,
 	file_path: PathBuf,
 	block_size: u16,
 	rsum_bytes: u8,
 	checksum_bytes: u8,
+	progress_callback: PyObject,
 ) -> PyResult<Vec<BlockInfo>> {
-	let result = _calc_block_infos(file_path.as_path(), block_size, rsum_bytes, checksum_bytes)?;
+	let result = _calc_block_infos(py, file_path.as_path(), block_size, rsum_bytes, checksum_bytes, progress_callback)?;
 	Ok(result.0)
 }
 
@@ -703,14 +715,14 @@ fn rs_get_patch_instructions(
 				- ((checksum_lookups as f64 - checksum_matches as f64) / rsum_map_lookups as f64);
 		}
 		debug!(
-            "Statistics: duration={} ms, rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %",
-            duration, rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
-        );
+			"Statistics: duration={} ms, rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %",
+			duration, rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
+		);
 		if rsum_efficiency < 0.4 {
 			warn!(
-                "Inefficient rsum (rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %)",
-                rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
-            );
+				"Inefficient rsum (rsum_list_lookups={}, rsum_map_lookups={}, checksum_lookups={}, checksum_matches={}, rsum_efficiency={:.3} %)",
+				rsum_list_lookups, rsum_map_lookups, checksum_lookups, checksum_matches, rsum_efficiency * 100.0
+			);
 		}
 	}
 
@@ -776,7 +788,12 @@ fn rs_get_patch_instructions(
 	Ok(patch_instructions)
 }
 
-fn _create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> Result<ZsyncFileInfo, PyErr> {
+fn _create_zsync_info(
+	py: Python<'_>,
+	file_path: PathBuf,
+	legacy_mode: bool,
+	progress_callback: PyObject,
+) -> Result<ZsyncFileInfo, PyErr> {
 	let metadata = file_path.metadata()?;
 	let size = metadata.len();
 	let mtime: DateTime<Utc> = metadata.modified()?.into();
@@ -815,7 +832,7 @@ fn _create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> Result<ZsyncFile
 	);
 
 	let (block_infos, sha1_digest, sha256_digest) =
-		_calc_block_infos(file_path.as_path(), block_size, rsum_bytes, checksum_bytes)?;
+		_calc_block_infos(py, file_path.as_path(), block_size, rsum_bytes, checksum_bytes, progress_callback)?;
 	let zsync_file_info = ZsyncFileInfo {
 		zsync: ZSYNC_VERSION.to_string(),
 		producer: if legacy_mode {
@@ -843,8 +860,13 @@ fn _create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> Result<ZsyncFile
 }
 
 #[pyfunction]
-fn rs_create_zsync_info(file_path: PathBuf, legacy_mode: bool) -> PyResult<ZsyncFileInfo> {
-	let zsync_file_info = _create_zsync_info(file_path, legacy_mode)?;
+fn rs_create_zsync_info(
+	py: Python<'_>,
+	file_path: PathBuf,
+	legacy_mode: bool,
+	progress_callback: PyObject
+) -> PyResult<ZsyncFileInfo> {
+	let zsync_file_info = _create_zsync_info(py, file_path, legacy_mode, progress_callback)?;
 	Ok(zsync_file_info)
 }
 
@@ -896,11 +918,13 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
 
 #[pyfunction]
 fn rs_create_zsync_file(
+	py: Python<'_>,
 	file_path: PathBuf,
 	zsync_file_path: PathBuf,
 	legacy_mode: bool,
+	progress_callback: PyObject,
 ) -> PyResult<()> {
-	let zsync_file_info = _create_zsync_info(file_path, legacy_mode)?;
+	let zsync_file_info = _create_zsync_info(py, file_path, legacy_mode, progress_callback)?;
 	_write_zsync_file(zsync_file_info, zsync_file_path)?;
 	Ok(())
 }

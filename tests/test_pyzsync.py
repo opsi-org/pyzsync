@@ -1158,3 +1158,70 @@ def test_errors(tmp_path: Path) -> None:
 	zsync_file.write_text("Hash-Lengths: 2,2,20\n", encoding="utf-8")
 	with pytest.raises(ValueError, match="checksum_bytes out of range"):
 		read_zsync_file(zsync_file=zsync_file)
+
+
+def test_calc_block_infos_progress(tmp_path: Path) -> None:
+	test_file = tmp_path / "test"
+	test_file.write_bytes(b"\0" * 1_000_000)
+
+	# Test callback
+	progress_callbacks = []
+
+	def progress_callback(block: int, total_blocks: int) -> None:
+		nonlocal progress_callbacks
+		progress_callbacks.append((block, total_blocks))
+
+	calc_block_infos(test_file, 4096, 4, 16, progress_callback=progress_callback)
+	for idx in range(245):
+		assert progress_callbacks[idx] == (idx + 1, 245) in progress_callbacks
+
+	def progress_callback_abort(block: int, total_blocks: int) -> None:
+		return block > 100
+
+	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
+		calc_block_infos(test_file, 4096, 4, 16, progress_callback=progress_callback_abort)
+
+
+def test_create_zsync_info_progress(tmp_path: Path) -> None:
+	test_file = tmp_path / "test"
+	test_file.write_bytes(b"\0" * 1_000_000)
+
+	# Test callback
+	progress_callbacks = []
+
+	def progress_callback(block: int, total_blocks: int) -> None:
+		nonlocal progress_callbacks
+		progress_callbacks.append((block, total_blocks))
+
+	create_zsync_info(test_file, progress_callback=progress_callback)
+	for idx in range(489):
+		assert progress_callbacks[idx] == (idx + 1, 489) in progress_callbacks
+
+	def progress_callback_abort(block: int, total_blocks: int) -> None:
+		return block > 100
+
+	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
+		create_zsync_info(test_file, progress_callback=progress_callback_abort)
+
+
+def test_create_zsync_file_progress(tmp_path: Path) -> None:
+	remote_file = tmp_path / "remote"
+	zsync_file = tmp_path / "remote.zsync"
+	remote_file.write_bytes(b"\0" * 1_000_000)
+
+	# Test callback
+	progress_callbacks = []
+
+	def progress_callback(block: int, total_blocks: int) -> None:
+		nonlocal progress_callbacks
+		progress_callbacks.append((block, total_blocks))
+
+	create_zsync_file(remote_file, zsync_file, progress_callback=progress_callback)
+	for idx in range(489):
+		assert progress_callbacks[idx] == (idx + 1, 489) in progress_callbacks
+
+	def progress_callback_abort(block: int, total_blocks: int) -> None:
+		return block > 100
+
+	with pytest.raises(RuntimeError, match="Aborted by progress callback"):
+		create_zsync_file(remote_file, zsync_file, progress_callback=progress_callback_abort)

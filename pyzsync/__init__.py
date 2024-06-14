@@ -418,8 +418,10 @@ def calc_block_size(file_size: int) -> int:
 	return rs_calc_block_size(file_size)
 
 
-def calc_block_infos(file: Path, block_size: int, rsum_bytes: int = 4, checksum_bytes: int = 16) -> list[BlockInfo]:
-	return rs_calc_block_infos(file, block_size, rsum_bytes, checksum_bytes)
+def calc_block_infos(
+	file: Path, block_size: int, rsum_bytes: int = 4, checksum_bytes: int = 16, *, progress_callback: Optional[Callable] = None
+) -> list[BlockInfo]:
+	return rs_calc_block_infos(file, block_size, rsum_bytes, checksum_bytes, progress_callback)
 
 
 def read_zsync_file(zsync_file: Path) -> ZsyncFileInfo:
@@ -430,12 +432,12 @@ def write_zsync_file(zsync_info: ZsyncFileInfo, zsync_file: Path) -> None:
 	return rs_write_zsync_file(zsync_info, zsync_file)
 
 
-def create_zsync_file(file: Path, zsync_file: Path, *, legacy_mode: bool = True) -> None:
-	return rs_create_zsync_file(file, zsync_file, legacy_mode)
+def create_zsync_file(file: Path, zsync_file: Path, *, legacy_mode: bool = True, progress_callback: Optional[Callable] = None) -> None:
+	return rs_create_zsync_file(file, zsync_file, legacy_mode, progress_callback)
 
 
-def create_zsync_info(file: Path, *, legacy_mode: bool = True) -> ZsyncFileInfo:
-	return rs_create_zsync_info(file, legacy_mode)
+def create_zsync_info(file: Path, *, legacy_mode: bool = True, progress_callback: Optional[Callable] = None) -> ZsyncFileInfo:
+	return rs_create_zsync_info(file, legacy_mode, progress_callback)
 
 
 def get_patch_instructions(
