@@ -108,9 +108,10 @@ uibpypi-windows-py310-x86:
   tags:
     - win10-py310-x86
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -120,9 +121,10 @@ uibpypi-darwin-py310-x64:
   tags:
     - catalina-py310-x64
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -130,9 +132,10 @@ uibpypi-linux-py310-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.10
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -142,9 +145,10 @@ uibpypi-windows-py311-x86:
   tags:
     - win10-py311-x86
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -153,9 +157,10 @@ uibpypi-darwin-py311-x64:
   tags:
     - catalina-py311-x64
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -163,9 +168,10 @@ uibpypi-linux-py311-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -175,9 +181,10 @@ uibpypi-linux-py311-arm64:
     - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -186,9 +193,10 @@ uibpypi-linux-py312-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.12
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -198,9 +206,10 @@ uibpypi-linux-py312-arm64:
     - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.12
   script:
+    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -211,7 +220,7 @@ uibpypi-linux-py313-x64:
   script:
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
 
@@ -223,6 +232,6 @@ uibpypi-linux-py313-arm64:
   script:
     - uv sync --all-extras
     - uv run maturin build --release
-    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
   only:
     - tags
