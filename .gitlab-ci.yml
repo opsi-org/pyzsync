@@ -9,9 +9,9 @@ pytest-darwin:
   tags:
     - catalina-py311-x64
   script:
-    - poetry install
-    - poetry run maturin develop --release
-    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - uv sync --all-extras
+    - uv run maturin develop --release
+    - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_darwin
   artifacts:
     name: "pyzsync_test_darwin"
@@ -30,9 +30,9 @@ pytest-windows:
     - git config --global core.autocrlf false
     - git config --global -l
     - git config -l
-    - poetry install
-    - poetry run maturin develop --release
-    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - uv sync --all-extras
+    - uv run maturin develop --release
+    - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - Rename-Item -Path .coverage -NewName coverage_windows
   artifacts:
     name: "pyzsync_test_windows"
@@ -48,9 +48,9 @@ pytest-linux:
     - apt update
     # need tar, gzip, zsnyc and zsyncmake for tests
     - apt --yes install tar gzip zsync
-    - poetry install
-    - poetry run maturin develop --release
-    - poetry run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - uv sync --all-extras
+    - uv run maturin develop --release
+    - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_linux
   artifacts:
     name: "pyzsync_test_linux"
@@ -74,16 +74,16 @@ pylint-pytest:
     - apt-get update
     - apt-get --yes --allow-downgrades install libsqlite3-0=3.16.2-5+deb9u1
     - apt-get --yes install sqlite3
-    - poetry install
-    - poetry run maturin develop --release
-    - poetry run ruff check pyzsync tests
-    - poetry run mypy pyzsync tests
+    - uv sync --all-extras
+    - uv run maturin develop --release
+    - uv run ruff check pyzsync tests
+    - uv run mypy pyzsync tests
     - for db in coverage_*; do sqlite3 $db 'update file set path=replace(substr(path,instr(path,"pyzsync")),"\","/");'; done
     - echo -e '[run]\nrelative_files = True\n' > .coveragerc
-    - poetry run coverage combine coverage_*
-    - poetry run coverage xml
-    - poetry run coverage report
-    - poetry run opsi-dev-tool -l info --testreport-merge testreport_*.xml testreport.xml
+    - uv run coverage combine coverage_*
+    - uv run coverage xml
+    - uv run coverage report
+    - uv run opsi-dev-tool -l info --testreport-merge testreport_*.xml testreport.xml
   coverage: '/TOTAL\s+\d+\s+\d+\s+(\d+)%/'
   artifacts:
     name: "pyzsync_test"
@@ -108,9 +108,9 @@ uibpypi-windows-py310-x86:
   tags:
     - win10-py310-x86
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -120,9 +120,9 @@ uibpypi-darwin-py310-x64:
   tags:
     - catalina-py310-x64
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -130,9 +130,9 @@ uibpypi-linux-py310-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.10
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -142,9 +142,9 @@ uibpypi-windows-py311-x86:
   tags:
     - win10-py311-x86
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -153,9 +153,9 @@ uibpypi-darwin-py311-x64:
   tags:
     - catalina-py311-x64
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -163,9 +163,9 @@ uibpypi-linux-py311-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -175,9 +175,9 @@ uibpypi-linux-py311-arm64:
     - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -186,9 +186,9 @@ uibpypi-linux-py312-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.12
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -198,9 +198,9 @@ uibpypi-linux-py312-arm64:
     - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.12
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -209,9 +209,9 @@ uibpypi-linux-py313-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.13
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -221,8 +221,8 @@ uibpypi-linux-py313-arm64:
     - linux-arm64
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.13
   script:
-    - poetry install
-    - poetry run maturin build --release
-    - poetry run maturin publish --repository-url http://192.168.100.11:8080
+    - uv sync --all-extras
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags

@@ -15,7 +15,7 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13-dev"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     runs-on: ${{ matrix.os }}
 
@@ -28,24 +28,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: Gr1N/setup-poetry@v8
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - uses: PyO3/maturin-action@v1
 
       - name: Build package in debug mode and install it to virtualenv
         run: |
-          poetry --version
-          poetry install
-          poetry run maturin develop --release
+          uv --version
+          uv sync --all-extras
+          uv run maturin develop --release
 
       - name: Run ruff check
-        run: poetry run ruff check pyzsync tests
+        run: uv run ruff check pyzsync tests
 
       - name: Run mypy
-        run: poetry run mypy pyzsync tests
+        run: uv run mypy pyzsync tests
 
       - name: Run cargo test
         run: cargo test --no-default-features
 
       - name: Run pytest
-        run: poetry run pytest -vv
+        run: uv run pytest -vv

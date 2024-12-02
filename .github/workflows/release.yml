@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]
         arch: [x86_64, aarch64]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13-dev"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
           - os: windows-latest
             ls: dir
@@ -71,7 +71,8 @@ jobs:
           name: dist
           path: dist
 
-      - uses: Gr1N/setup-poetry@v8
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: List dist contents
         run: ls -la dist
@@ -86,5 +87,7 @@ jobs:
 
       - name: Publish to PyPI
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
-        run: poetry publish
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        #run: uv publish
+        run: uv run maturin publish
