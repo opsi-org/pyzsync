@@ -6,11 +6,17 @@ build-backend = "maturin"
 name = "pyzsync"
 version = "1.4.0"
 description = "A Python module written in Rust that implements the zsync algorithm"
-license = { text = "AGPL-3.0" }
-authors = [{ name = "uib GmbH", email = "info@uib.de" }]
-maintainers = [{ name = "uib GmbH", email = "info@uib.de" }]
+license = "AGPL-3.0-only"
 readme = "README.md"
 requires-python = ">=3.9"
+
+[[project.authors]]
+name = "uib GmbH"
+email = "info@uib.de"
+
+[[project.maintainers]]
+name = "uib GmbH"
+email = "info@uib.de"
 
 [tool.ruff]
 line-length = 140
