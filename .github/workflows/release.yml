@@ -25,7 +25,7 @@ jobs:
           - os: windows
             python-version: 3.14
 
-    runs-on: ${{ matrix.os.runner }}
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
