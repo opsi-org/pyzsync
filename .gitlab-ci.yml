@@ -158,6 +158,7 @@ uibpypi-linux-py310-x64:
 # Python 3.11
 uibpypi-windows-py311-x86:
   stage: publish
+  when: manual
   tags:
     - win10-py311-x86
   script:
