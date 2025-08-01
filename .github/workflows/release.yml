@@ -26,7 +26,9 @@ jobs:
     steps:
       - name: Skip unsupported combinations
         if: ${{ matrix.os.target == 'windows' && matrix.python-version == '3.14' }}
-        run: echo "Skipping unsupported combination: Windows + Python 3.14" && exit 0
+        run: |
+          echo "Skipping unsupported combination: Windows + Python 3.14"
+          exit 0
 
       - uses: actions/checkout@v4
 
