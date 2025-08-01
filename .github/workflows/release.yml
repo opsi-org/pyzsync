@@ -20,13 +20,14 @@ jobs:
             target: windows
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-        exclude:
-          - os.target: windows
-            python-version: 3.14
 
     runs-on: ${{ matrix.os.runner }}
 
     steps:
+      - name: Skip unsupported combinations
+        if: ${{ matrix.os.target == 'windows' && matrix.python-version == '3.14' }}
+        run: echo "Skipping unsupported combination: Windows + Python 3.14" && exit 0
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v4
