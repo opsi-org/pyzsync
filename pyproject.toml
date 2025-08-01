@@ -24,7 +24,7 @@ follow_imports = "silent"
 [tool.ruff.format]
 indent-style = "tab"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
 	"maturin>=1.0",
 	"mypy>=1.3",
