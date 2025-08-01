@@ -41,8 +41,8 @@ Based on [PyO3](https://pyo3.rs)
 rustup toolchain install beta-x86_64-unknown-linux-gnu
 
 # Build package in debug mode and install it to virtualenv
-poetry install
-poetry run maturin develop --release
+uv sync --all-extras
+uv run maturin develop --release
 
 # Run clippy
 cargo clippy
@@ -51,8 +51,8 @@ cargo clippy
 cargo test --no-default-features
 
 # Run pytest
-poetry run pytest -vv
+uv run pytest -vv
 
 # Build release package
-poetry run maturin build --release
+uv run maturin build --release
 ```
