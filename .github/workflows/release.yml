@@ -22,7 +22,7 @@ jobs:
           - os: windows-latest
             target: windows
         exclude:
-          - os: windows
+          - os: windows-latest
             python-version: 3.14
 
     runs-on: ${{ matrix.os }}
