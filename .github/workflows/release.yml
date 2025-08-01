@@ -42,13 +42,10 @@ jobs:
             rust-target: aarch64-pc-windows-msvc
             target: windows
 
-        exclude:
-          - os: windows-latest
-            python-version: 3.14
-          - os: windows-latest
-            arch: aarch64
-          - os: ubuntu-22.04
-            arch: aarch64
+    if: |
+      !(matrix.os == 'windows-latest' && matrix.python-version == '3.14') &&
+      !(matrix.os == 'windows-latest' && matrix.arch == 'aarch64') &&
+      !(matrix.os == 'ubuntu-22.04' && matrix.arch == 'aarch64')
 
     runs-on: ${{ matrix.os }}
 
