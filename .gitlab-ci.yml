@@ -9,7 +9,10 @@ pytest-darwin:
   tags:
     - catalina-py313-x64
   script:
-    - uv sync --all-extras
+    - export UV_PYTHON="3.13"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv self update
+    - uv sync --frozen
     - uv run maturin develop --release
     - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_darwin
@@ -30,8 +33,11 @@ pytest-windows:
     - git config --global core.autocrlf false
     - git config --global -l
     - git config -l
-    - $env:UV_PYTHON = "3.13"
-    - uv sync --all-extras
+    - $Env:UV_PYTHON_INSTALL_DIR = "c:\\uv\\python"
+    - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
+    - $Env:UV_PYTHON = "3.13"
+    - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - uv sync --frozen
     - uv run maturin develop --release
     - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - Rename-Item -Path .coverage -NewName coverage_windows
@@ -49,7 +55,9 @@ pytest-linux:
     - apt update
     # need tar, gzip, zsnyc and zsyncmake for tests
     - apt --yes install tar gzip zsync
-    - uv sync --all-extras
+    - export UV_PYTHON="3.13"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin develop --release
     - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_linux.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
     - mv .coverage coverage_linux
@@ -75,7 +83,9 @@ pylint-pytest:
     - apt-get update
     - apt-get --yes --allow-downgrades install libsqlite3-0=3.16.2-5+deb9u1
     - apt-get --yes install sqlite3
-    - uv sync --all-extras
+    - export UV_PYTHON="3.13"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin develop --release
     - uv run ruff check pyzsync tests
     - uv run mypy pyzsync tests
@@ -99,7 +109,7 @@ pylint-pytest:
 
 # Needs MATURIN_USERNAME and MATURIN_PASSWORD in env
 # Using IP address because of:
-#   http://pypi.uib.gmbh:8080/: Dns Failed: resolve dns name 'pypi.uib.gmbh:8080':
+#   https://pypi.uib.gmbh:8080/: Dns Failed: resolve dns name 'pypi.uib.gmbh:/
 #   failed to lookup address information: Name does not resolve
 
 # Python 3.10
@@ -107,13 +117,15 @@ uibpypi-windows-py310-x86:
   stage: publish
   when: manual
   tags:
-    - win10-py310-x86
+    - win10-py311-x86
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - $env:UV_PYTHON = "3.10"
-    - uv sync --all-extras
+    - $Env:UV_PYTHON_INSTALL_DIR = "c:\\uv\\python"
+    - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
+    - $Env:UV_PYTHON = "3.10"
+    - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -121,13 +133,14 @@ uibpypi-darwin-py310-x64:
   stage: publish
   when: manual
   tags:
-    - catalina-py310-x64
+    - catalina-py311-x64
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - export UV_PYTHON = "3.10"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.10"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv self update
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -135,11 +148,11 @@ uibpypi-linux-py310-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.10
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - export UV_PYTHON = "3.10"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.10"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -149,11 +162,13 @@ uibpypi-windows-py311-x86:
   tags:
     - win10-py311-x86
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - $env:UV_PYTHON = "3.11"
-    - uv sync --all-extras
+    - $Env:UV_PYTHON_INSTALL_DIR = "c:\\uv\\python"
+    - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
+    - $Env:UV_PYTHON = "3.11"
+    - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -162,11 +177,12 @@ uibpypi-darwin-py311-x64:
   tags:
     - catalina-py311-x64
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - export UV_PYTHON = "3.11"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.11"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv self update
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
@@ -174,49 +190,98 @@ uibpypi-linux-py311-x64:
   stage: publish
   image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - export UV_PYTHON = "3.11"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.11"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
 uibpypi-linux-py311-arm64:
   stage: publish
   tags:
-    - linux-arm64
-  image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.11
+    - docker-arm64
   script:
-    - "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    - export UV_PYTHON = "3.11"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.11"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+# Python 3.12
+uibpypi-linux-py312-x64:
+  stage: publish
+  script:
+    - export UV_PYTHON="3.12"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+uibpypi-linux-py312-arm64:
+  stage: publish
+  tags:
+    - docker-arm64
+  script:
+    - export UV_PYTHON="3.12"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
 # Python 3.13
 uibpypi-linux-py313-x64:
   stage: publish
-  image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.13
   script:
-    - export UV_PYTHON = "3.13"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.13"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
 uibpypi-linux-py313-arm64:
   stage: publish
   tags:
-    - linux-arm64
-  image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.13
+    - docker-arm64
   script:
-    - export UV_PYTHON = "3.13"
-    - uv sync --all-extras
+    - export UV_PYTHON="3.13"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
     - uv run maturin build --release
-    - uv run maturin publish --repository-url http://pypi.uib.gmbh:8080/
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+# Python 3.14
+uibpypi-linux-py314-x64:
+  stage: publish
+  script:
+    - export UV_PYTHON="3.14"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+uibpypi-linux-py314-arm64:
+  stage: publish
+  tags:
+    - docker-arm64
+  script:
+    - export UV_PYTHON="3.14"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags

@@ -36,7 +36,7 @@ jobs:
       - name: Build package in debug mode and install it to virtualenv
         run: |
           uv --version
-          uv sync --all-extras
+          uv sync --frozen
           uv run maturin develop --release
 
       - name: Run ruff check
