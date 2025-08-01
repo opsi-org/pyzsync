@@ -294,7 +294,7 @@ wheels = [
 
 [[package]]
 name = "pyzsync"
-version = "1.4.3"
+version = "1.4.4"
 source = { editable = "." }
 
 [package.dev-dependencies]
