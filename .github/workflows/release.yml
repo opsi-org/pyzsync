@@ -14,16 +14,16 @@ jobs:
         os: [ubuntu-22.04, macos-latest, windows-latest]
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-      include:
-        - os: ubuntu-22.04
-          target: linux
-        - os: macos-latest
-          target: macos
-        - os: windows-latest
-          target: windows
-      exclude:
-        - os: windows
-          python-version: 3.14
+        include:
+          - os: ubuntu-22.04
+            target: linux
+          - os: macos-latest
+            target: macos
+          - os: windows-latest
+            target: windows
+        exclude:
+          - os: windows
+            python-version: 3.14
 
     runs-on: ${{ matrix.os.runner }}
 
