@@ -84,13 +84,17 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: List contents
-        run: ls -laR artifacts
+      - name: Prepare files
+        run: |
+          mkdir dist
+          cp artifacts/sdist/*.tar.gz dist/
+          cp artifacts/wheels*/*.whl dist/
+          ls -l dist
 
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "artifacts/sdist/*,artifacts/wheels*/*.whl"
+          artifacts: "dist/*"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
@@ -99,5 +103,4 @@ jobs:
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        #run: uv publish
         run: uv run maturin publish
