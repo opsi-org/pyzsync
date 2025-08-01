@@ -11,14 +11,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
+        os:
+          - runner: ubuntu-22.04
+            target: linux
+          - runner: macos-latest
+            target: macos
+          - runner: windows-latest
+            target: windows
         arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14.0-rc.1"]
-        include:
-          - os: windows-latest
-            ls: dir
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,11 +37,15 @@ jobs:
           args: --release --out dist --interpreter ${{ matrix.python-version }}
           rust-toolchain: stable
 
-      - run: ${{ matrix.ls || 'ls -lh' }} dist
+      - run: ls -lh dist
+        if: matrix.os.target == 'linux' || matrix.os.target == 'macos'
+
+      - run: dir dist
+        if: matrix.os.target == 'windows'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: wheels-${{ matrix.os.target }}-${{ matrix.arch }}-${{ matrix.python-version }}
           path: dist
 
   build_sdist:
