@@ -68,7 +68,7 @@ def zsync(url: str, *, files: Optional[list[Path]] = None, username: Optional[st
 				while position < total_size:
 					data = response.read(65536)
 					if not data:
-						raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: read only {position/total_size} bytes")
+						raise RuntimeError(f"Failed to fetch {url_obj.geturl()}: read only {position / total_size} bytes")
 					file.write(data)
 					position += len(data)
 					completed = round(position * 100 / total_size, 1)
@@ -106,7 +106,7 @@ def zsync(url: str, *, files: Optional[list[Path]] = None, username: Optional[st
 			if completed == self.last_completed:
 				return
 			print(
-				f"\r::: {completed:0.1f} % ::: {position/1_000_000:.2f}/{total/1_000_000:.2f} MB ::: {per_second/1_000:.0f} kB/s :::",
+				f"\r::: {completed:0.1f} % ::: {position / 1_000_000:.2f}/{total / 1_000_000:.2f} MB ::: {per_second / 1_000:.0f} kB/s :::",
 				end="",
 			)
 			self.last_completed = completed
@@ -126,7 +126,7 @@ def zsync(url: str, *, files: Optional[list[Path]] = None, username: Optional[st
 	if sha1 != zsync_info.sha1:
 		raise RuntimeError(f"SHA1 mismatch: {sha1.hex()} != {zsync_info.sha1.hex()}")
 
-	print(f"Successfully created {local_files[0]} (reduction: {100-ratio:.2f} %)")
+	print(f"Successfully created {local_files[0]} (reduction: {100 - ratio:.2f} %)")
 
 
 def compare(file1: Path, file2: Path) -> None:
