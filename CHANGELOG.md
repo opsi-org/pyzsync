@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.4.20] - 2025-10-22
+### Fixed
+- Avoid using spaces in the Range header, as this can cause issues with certain versions of Apache
+
 ## [1.4.19] - 2025-08-01
 ### Added
 - Add Python 3.14 support

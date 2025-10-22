@@ -12,16 +12,7 @@ from http.client import HTTPConnection, HTTPSConnection
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
-from typing import (
-	Any,
-	BinaryIO,
-	Callable,
-	Iterator,
-	Literal,
-	NamedTuple,
-	Optional,
-	Union,
-)
+from typing import Any, BinaryIO, Callable, Iterator, Literal, NamedTuple, Optional, Union
 from urllib.parse import urlparse
 
 from pyzsync.pyzsync import (
@@ -258,7 +249,7 @@ class HTTPPatcher(Patcher):
 			raise RuntimeError(f"Did not process any instructions with the last request ({self._request_instructions})")
 
 		self._request_instructions = new_request_instructions
-		byte_ranges = ", ".join(ranges)
+		byte_ranges = ",".join(ranges)
 		self._headers["Range"] = f"bytes={byte_ranges}"
 
 		logger.info("Sending GET request #%d to %s", self._request_number, self._url.geturl())
