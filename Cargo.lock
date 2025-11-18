@@ -326,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "pyzsync"
-version = "1.4.20"
+version = "1.4.21"
 dependencies = [
  "arrayref",
  "chrono",

@@ -263,8 +263,11 @@ class HTTPPatcher(Patcher):
 				f"{response_code} - {self._read_response_data(self.chunk_size).decode('utf-8', 'replace')}"
 			)
 
-		ctype = response_headers["Content-Type"]
-		if ctype.startswith("multipart/byteranges"):
+		ctype = response_headers.get("Content-Type")
+		if not ctype:
+			logger.debug("No Content-Type header found")
+
+		if ctype and ctype.startswith("multipart/byteranges"):
 			boundary = [p.split("=", 1)[1].strip() for p in ctype.split(";") if p.strip().startswith("boundary=")]
 			if not boundary:
 				raise RuntimeError("No boundary found in Content-Type")
