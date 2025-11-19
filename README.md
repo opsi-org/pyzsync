@@ -7,20 +7,20 @@ A Python module written in Rust that implements the [zsync algorithm](http://zsy
 ### Use the Python module as a script
 ```shell
 # Show help.
-python -m pyzsync --help
+uvx --with pyzsync python -m pyzsync --help
 
 # Create a zsync file.
-poetry run python -m pyzsync zsyncmake bigfile
+uvx --with pyzsync python -m pyzsync zsyncmake bigfile
 
 # Compare two files and show how much data from the first file
 # can be used to create the second file using the zsync algorithm.
-python -m pyzsync compare bigfile1 bigfile2
+uvx --with pyzsync python -m pyzsync compare bigfile1 bigfile2
 
 # Download a file using zsync.
 # This will automatically use blocks from the local files
 # noble-desktop-amd64.iso and noble-desktop-amd64.iso.zsync-tmp-*
 # if available.
-python -m pyzsync zsync https://cdimage.ubuntu.com/daily-live/current/noble-desktop-amd64.iso.zsync
+uvx --with pyzsync python -m pyzsync zsync https://cdimage.ubuntu.com/daily-live/current/noble-desktop-amd64.iso.zsync
 ```
 
 ### Use the Python module in a script
