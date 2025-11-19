@@ -134,6 +134,11 @@ jobs:
             target: windows
             rust-target: x86_64-pc-windows-msvc
             python-version: "3.13"
+          - os: windows-latest
+            arch: x86_64
+            target: windows
+            rust-target: x86_64-pc-windows-msvc
+            python-version: "3.14"
 
     runs-on: ${{ matrix.os }}
 
