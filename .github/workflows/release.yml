@@ -43,6 +43,11 @@ jobs:
             target: linux
             rust-target: x86_64-unknown-linux-gnu
             python-version: "3.14"
+          - os: ubuntu-22.04
+            arch: x86_64
+            target: linux
+            rust-target: x86_64-unknown-linux-gnu
+            python-version: "3.14t"
 
           # macOS x86_64
           - os: macos-latest
@@ -75,6 +80,11 @@ jobs:
             target: macos
             rust-target: x86_64-apple-darwin
             python-version: "3.14"
+          - os: macos-latest
+            arch: x86_64
+            target: macos
+            rust-target: x86_64-apple-darwin
+            python-version: "3.14t"
 
           # macOS aarch64
           - os: macos-latest
@@ -107,6 +117,11 @@ jobs:
             target: macos
             rust-target: aarch64-apple-darwin
             python-version: "3.14"
+          - os: macos-latest
+            arch: aarch64
+            target: macos
+            rust-target: aarch64-apple-darwin
+            python-version: "3.14t"
 
           # Windows x86_64
           - os: windows-latest
@@ -139,6 +154,11 @@ jobs:
             target: windows
             rust-target: x86_64-pc-windows-msvc
             python-version: "3.14"
+          - os: windows-latest
+            arch: x86_64
+            target: windows
+            rust-target: x86_64-pc-windows-msvc
+            python-version: "3.14t"
 
     runs-on: ${{ matrix.os }}
 
