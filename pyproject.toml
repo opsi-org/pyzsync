@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyzsync"
-version = "1.4.22"
+version = "1.4.23"
 description = "A Python module written in Rust that implements the zsync algorithm"
 license = "AGPL-3.0-only"
 readme = "README.md"
