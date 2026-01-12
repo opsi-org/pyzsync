@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.4.22] - 2026-01-12
+### Added
+- Add Python 3.14 free threading support
+
 ## [1.4.21] - 2025-11-18
 ### Fixed
 - Do not abort if Content-Type header is missing
