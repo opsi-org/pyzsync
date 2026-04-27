@@ -1,10 +1,10 @@
-image: docker.uib.gmbh/opsi/dev/pybuilder:deb9-py3.13
+image: docker.uib.gmbh/opsi/dev/pybuilder:deb9
 
 stages:
   - test
   - publish
 
-pytest-darwin:
+pytest-macos:
   stage: test
   tags:
     - catalina-py313-x64
@@ -14,20 +14,20 @@ pytest-darwin:
     - uv self update
     - uv sync --frozen
     - uv run maturin develop --release
-    - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_darwin.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
-    - mv .coverage coverage_darwin
+    - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_macos.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
+    - mv .coverage coverage_macos
   artifacts:
-    name: "pyzsync_test_darwin"
+    name: "pyzsync_test_macos"
     paths:
       - coverage.xml
-      - testreport_darwin.xml
-      - coverage_darwin
+      - testreport_macos.xml
+      - coverage_macos
     expire_in: 3 days
 
 pytest-windows:
   stage: test
   tags:
-    - win10-py313-x86
+    - win10-x64
   script:
     - git config --global -l
     - git config --global core.autocrlf false
@@ -37,6 +37,7 @@ pytest-windows:
     - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
     - $Env:UV_PYTHON = "3.13"
     - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - $Env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
     - uv sync --frozen
     - uv run maturin develop --release
     - uv run pytest --tb=short -o junit_family=xunit2 --junitxml=testreport_windows.xml --cov-append --cov pyzsync --cov-report term --cov-report xml -v tests
@@ -75,7 +76,7 @@ pylint-pytest:
     # We want to combine test coverage from all test jobs
     - job: pytest-windows
       artifacts: true
-    - job: pytest-darwin
+    - job: pytest-macos
       artifacts: true
     - job: pytest-linux
       artifacts: true
@@ -111,19 +112,20 @@ uibpypi-windows-py310-x86:
   stage: publish
   when: manual
   tags:
-    - win10-py311-x86
+    - win10-x64
   script:
     - $Env:UV_PYTHON_INSTALL_DIR = "c:\\uv\\python"
     - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
     - $Env:UV_PYTHON = "3.10"
     - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - $Env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
     - uv sync --frozen
     - uv run maturin build --release
     - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
-uibpypi-darwin-py310-x64:
+uibpypi-macos-py310-x64:
   stage: publish
   when: manual
   tags:
@@ -154,19 +156,20 @@ uibpypi-windows-py311-x86:
   stage: publish
   when: manual
   tags:
-    - win10-py311-x86
+    - win10-x64
   script:
     - $Env:UV_PYTHON_INSTALL_DIR = "c:\\uv\\python"
     - $Env:UV_CACHE_DIR = "c:\\uv\\cache"
     - $Env:UV_PYTHON = "3.11"
     - $Env:UV_PYTHON_PREFERENCE = "only-managed"
+    - $Env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
     - uv sync --frozen
     - uv run maturin build --release
     - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
 
-uibpypi-darwin-py311-x64:
+uibpypi-macos-py311-x64:
   stage: publish
   tags:
     - catalina-py311-x64
