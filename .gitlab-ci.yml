@@ -88,7 +88,7 @@ pylint-pytest:
     - uv sync --frozen
     - uv run maturin develop --release
     - uv run ruff check pyzsync tests
-    - uv run mypy pyzsync tests
+    - uv run ty check pyzsync tests
     - for db in coverage_*; do sqlite3 $db 'update file set path=replace(substr(path,instr(path,"pyzsync")),"\","/");'; done
     - echo -e '[run]\nrelative_files = True\n' > .coveragerc
     - uv run coverage combine coverage_*
