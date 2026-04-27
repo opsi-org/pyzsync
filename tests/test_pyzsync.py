@@ -1237,19 +1237,19 @@ def test_errors(tmp_path: Path) -> None:
 	create_zsync_file(some_file, some_zsync_file)
 	some_zsync_info = read_zsync_file(some_zsync_file)
 
-	with pytest.raises(ValueError, match="num_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for num_bytes: 18"):
 		md4(block=b"data", num_bytes=18)
 
-	with pytest.raises(ValueError, match="num_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for num_bytes: 5"):
 		rsum(block=b"data", num_bytes=5)
 
-	with pytest.raises(ValueError, match="Invalid block_size"):
+	with pytest.raises(ValueError, match="Invalid value for block_size: 1"):
 		calc_block_infos(file=some_file, block_size=1)
 
-	with pytest.raises(ValueError, match="rsum_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for rsum_bytes: 10"):
 		calc_block_infos(file=some_file, block_size=2048, rsum_bytes=10)
 
-	with pytest.raises(ValueError, match="checksum_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for checksum_bytes: 33"):
 		calc_block_infos(file=some_file, block_size=2048, checksum_bytes=33)
 
 	with pytest.raises(FileNotFoundError, match="" if is_windows else "No such file or directory"):
@@ -1299,15 +1299,15 @@ def test_errors(tmp_path: Path) -> None:
 		read_zsync_file(zsync_file=zsync_file)
 
 	zsync_file.write_text("Hash-Lengths: 9,2,2\n", encoding="utf-8")
-	with pytest.raises(ValueError, match="seq_matches out of range"):
+	with pytest.raises(ValueError, match="Invalid value for seq_matches: 9"):
 		read_zsync_file(zsync_file=zsync_file)
 
 	zsync_file.write_text("Hash-Lengths: 2,10,2\n", encoding="utf-8")
-	with pytest.raises(ValueError, match="rsum_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for rsum_bytes: 10"):
 		read_zsync_file(zsync_file=zsync_file)
 
 	zsync_file.write_text("Hash-Lengths: 2,2,20\n", encoding="utf-8")
-	with pytest.raises(ValueError, match="checksum_bytes out of range"):
+	with pytest.raises(ValueError, match="Invalid value for checksum_bytes: 20"):
 		read_zsync_file(zsync_file=zsync_file)
 
 
