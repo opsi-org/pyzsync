@@ -14,7 +14,7 @@ use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{prelude::*, BufReader};
+use std::io::{prelude::*, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -26,6 +26,7 @@ const ZSYNC_VERSION: &str = "0.6.2";
 const PYZSYNC_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCER_NAME: &str = "pyzsync";
 const SOURCE_REMOTE: i8 = -1;
+const IO_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 #[pyclass(from_py_object)]
@@ -304,19 +305,13 @@ fn _md4_part(
 ) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
 	if num_bytes == 0 || num_bytes > CHECKSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"num_bytes out of range: {}",
+			"Invalid value for num_bytes: {}",
 			num_bytes
 		)));
 	}
 	let mut checksum: [u8; CHECKSUM_SIZE] = md4::md4(&block[offset..offset + len]);
 	if (num_bytes as usize) < CHECKSUM_SIZE {
-		for csb in checksum
-			.iter_mut()
-			.take(CHECKSUM_SIZE)
-			.skip(num_bytes as usize)
-		{
-			*csb = 0;
-		}
+		checksum[num_bytes as usize..].fill(0);
 	}
 	Ok(checksum)
 }
@@ -327,7 +322,7 @@ fn _md4(block: &[u8], num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
 
 #[pyfunction]
 fn rs_md4(block: &Bound<'_, PyBytes>, num_bytes: u8, py: Python<'_>) -> PyResult<Py<PyAny>> {
-	let res = _md4(block.as_bytes().to_vec().as_ref(), num_bytes)?;
+	let res = _md4(block.as_bytes(), num_bytes)?;
 	Ok(PyBytes::new(py, &res).into_any().unbind())
 }
 
@@ -335,17 +330,17 @@ fn rs_md4(block: &Bound<'_, PyBytes>, num_bytes: u8, py: Python<'_>) -> PyResult
 fn _rsum_part(block: &[u8], num_bytes: u8, offset: usize, len: usize) -> Result<u32, PyErr> {
 	if num_bytes == 0 || num_bytes > RSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"num_bytes out of range: {}",
+			"Invalid value for num_bytes: {}",
 			num_bytes
 		)));
 	}
 	let mut a: u16 = 0;
 	let mut b: u16 = 0;
 	let mut rlen = len as u16;
-	for chr in block.iter().skip(offset).take(len) {
-		let c = u16::from(*chr);
-		a += c;
-		b += rlen * c;
+	for &byte in &block[offset..offset + len] {
+		let c = u16::from(byte);
+		a = a.wrapping_add(c);
+		b = b.wrapping_add(rlen.wrapping_mul(c));
 		rlen -= 1;
 	}
 	let mut res: u32 = ((a as u32) << 16) + b as u32;
@@ -362,14 +357,14 @@ fn _rsum(block: &[u8], num_bytes: u8) -> Result<u32, PyErr> {
 
 #[pyfunction]
 fn rs_rsum(block: &Bound<'_, PyBytes>, num_bytes: u8) -> PyResult<u32> {
-	let res = _rsum(block.as_bytes().to_vec().as_ref(), num_bytes)?;
+	let res = _rsum(block.as_bytes(), num_bytes)?;
 	Ok(res)
 }
 
 fn _update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> PyResult<u32> {
 	if block_size != 2048 && block_size != 4096 {
 		return Err(PyValueError::new_err(format!(
-			"Invalid block_size: {}",
+			"Invalid value for block_size: {}",
 			block_size
 		)));
 	}
@@ -412,7 +407,7 @@ fn _calc_block_infos(
 ) -> Result<(Vec<BlockInfo>, [u8; 20], [u8; 32]), PyErr> {
 	if block_size != 2048 && block_size != 4096 {
 		return Err(PyValueError::new_err(format!(
-			"Invalid block_size: {}",
+			"Invalid value for block_size: {}",
 			block_size
 		)));
 	}
@@ -422,7 +417,7 @@ fn _calc_block_infos(
 		rsum_bytes = 0;
 	} else if rsum_bytes > RSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"rsum_bytes out of range: {}",
+			"Invalid value for rsum_bytes: {}",
 			rsum_bytes
 		)));
 	}
@@ -432,7 +427,7 @@ fn _calc_block_infos(
 		checksum_bytes = 0;
 	} else if checksum_bytes > CHECKSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"checksum_bytes out of range: {}",
+			"Invalid value for checksum_bytes: {}",
 			checksum_bytes
 		)));
 	}
@@ -442,8 +437,9 @@ fn _calc_block_infos(
 	let file = File::open(file_path)?;
 	let size = file_path.metadata()?.len();
 	let block_count: u64 = size.div_ceil(u64::from(block_size));
-	let mut block_infos: Vec<BlockInfo> = Vec::new();
-	let mut reader = BufReader::new(file);
+	let mut block_infos: Vec<BlockInfo> = Vec::with_capacity(block_count as usize);
+	let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
+	let mut block = vec![0u8; block_size as usize];
 
 	if !progress_callback.is_none(py) {
 		progress_callback.call(py, (0, block_count), None)?;
@@ -455,22 +451,21 @@ fn _calc_block_infos(
 		if block_id == block_count - 1 {
 			buf_size = (size - offset) as usize;
 		}
-		let mut block = vec![0u8; buf_size];
-		reader.read_exact(&mut block)?;
-		sha1.update(&block);
-		sha256.update(&block);
-		if buf_size < block_size as usize {
-			block.resize(block_size as usize, 0u8);
+		reader.read_exact(&mut block[..buf_size])?;
+		sha1.update(&block[..buf_size]);
+		sha256.update(&block[..buf_size]);
+		if buf_size < block.len() {
+			block[buf_size..].fill(0);
 		}
 
 		let mut checksum = [0u8; CHECKSUM_SIZE];
 		if checksum_bytes > 0 {
-			checksum = _md4(block.as_ref(), checksum_bytes)?;
+			checksum = _md4(&block, checksum_bytes)?;
 		}
 
 		let mut rsum: u32 = 0;
 		if rsum_bytes > 0 {
-			rsum = _rsum(block.as_ref(), rsum_bytes)?;
+			rsum = _rsum(&block, rsum_bytes)?;
 		}
 
 		let block_info = BlockInfo {
@@ -515,6 +510,23 @@ fn rs_calc_block_infos(
 	Ok(result.0)
 }
 
+fn _sha1_file(file_path: &Path) -> PyResult<[u8; 20]> {
+	let file = File::open(file_path)?;
+	let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
+	let mut sha1 = Sha1::new();
+	let mut buffer = [0u8; 1024 * 1024];
+
+	loop {
+		let bytes_read = reader.read(&mut buffer)?;
+		if bytes_read == 0 {
+			break;
+		}
+		sha1.update(&buffer[..bytes_read]);
+	}
+
+	Ok(sha1.finalize().into())
+}
+
 #[pyfunction]
 fn rs_get_patch_instructions(
 	py: Python<'_>,
@@ -532,25 +544,25 @@ fn rs_get_patch_instructions(
 	let block_size = zsync_file_info.block_size as usize;
 	if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
 		return Err(PyValueError::new_err(format!(
-			"seq_matches out of range: {}",
+			"Invalid value for seq_matches: {}",
 			zsync_file_info.seq_matches
 		)));
 	}
 	if zsync_file_info.rsum_bytes == 0 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"rsum_bytes out of range: {}",
+			"Invalid value for rsum_bytes: {}",
 			zsync_file_info.rsum_bytes
 		)));
 	}
 	if zsync_file_info.checksum_bytes == 0 || zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8 {
 		return Err(PyValueError::new_err(format!(
-			"checksum_bytes out of range: {}",
+			"Invalid value for checksum_bytes: {}",
 			zsync_file_info.checksum_bytes
 		)));
 	}
 	if zsync_file_info.block_size != 2048 && zsync_file_info.block_size != 4096 {
 		return Err(PyValueError::new_err(format!(
-			"Invalid block_size: {}",
+			"Invalid value for block_size: {}",
 			zsync_file_info.block_size
 		)));
 	}
@@ -600,12 +612,21 @@ fn rs_get_patch_instructions(
 
 	let mut patch_instructions: Vec<PatchInstruction> = Vec::new();
 	let mut block_ids_found: HashSet<u64> = HashSet::new();
+	let block_count = zsync_file_info.block_info.len();
 	let mut rsum_list_lookups: u64 = 0;
 	let mut rsum_map_lookups: u64 = 0;
 	let mut checksum_lookups: u64 = 0;
 	let mut checksum_matches: u64 = 0;
 
 	for (file_id, file_path) in file_paths.iter().enumerate() {
+		if block_ids_found.len() == block_count {
+			break;
+		}
+
+		let source = i8::try_from(file_id).map_err(|_| {
+			PyValueError::new_err("Too many source files; maximum supported is 127")
+		})?;
+
 		info!("Processing file #{}: {:?}", file_id, file_path);
 		if !file_path.exists() {
 			File::create(file_path)?;
@@ -616,6 +637,17 @@ fn rs_get_patch_instructions(
 		let file_size = metadata.len();
 		if file_size == 0 {
 			continue;
+		}
+		if progress_callback.is_none(py)
+			&& file_size == zsync_file_info.length
+			&& _sha1_file(file_path)? == zsync_file_info.sha1
+		{
+			return Ok(vec![PatchInstruction {
+				source,
+				source_offset: 0,
+				target_offset: 0,
+				size: zsync_file_info.length,
+			}]);
 		}
 		let reader = BufReader::new(file);
 		let mut read_it = reader.bytes();
@@ -634,6 +666,18 @@ fn rs_get_patch_instructions(
 		// If current rsum is found in map, also check md4.
 		// Add matches to patch_instructions.
 		loop {
+			if block_ids_found.len() == block_count {
+				if !progress_callback.is_none(py) {
+					let abort: Py<PyAny> = progress_callback
+						.call(py, (end_pos, end_pos), None)?
+						.extract(py)?;
+					if abort.is_truthy(py)? {
+						return Err(PyRuntimeError::new_err("Aborted by progress callback"));
+					}
+				}
+				break;
+			}
+
 			let new_percent: u8 = ((pos as f64 / end_pos as f64) * 100.0) as u8;
 			if new_percent != percent || pos == 0 || pos >= end_pos {
 				percent = new_percent;
@@ -729,33 +773,29 @@ fn rs_get_patch_instructions(
 					if block_infos.is_some() {
 						// Found some blocks which also match the reduced md4 of the current buffer.
 						checksum_matches += 1;
+						let mut added_instruction = false;
 						//debug!("Matching md4: {:?}", block_infos);
 						for block_info in block_infos.unwrap() {
 							if pos - buffer_size as u64 + block_info.size as u64 <= file_size {
 								// A file can contain several blocks with matching md4 sums.
 								// Check if block ID was already handled in the instructions.
-								if !block_ids_found.contains(&block_info.block_id) {
+								if block_ids_found.insert(block_info.block_id) {
+									added_instruction = true;
 									// Add current file offsets to instructions
-									let source = i8::try_from(file_id).map_err(|_| {
-										PyValueError::new_err(
-											"too many source files; maximum supported is 127",
-										)
-									})?;
 									patch_instructions.push(PatchInstruction {
 										source,
 										source_offset: pos - buffer_size as u64,
 										target_offset: block_info.offset,
 										size: block_info.size as u64,
 									});
-
-									// Add the ID of the block to the list of block IDs found
-									block_ids_found.insert(block_info.block_id);
 								}
 							}
 						}
-						// Remove on block from buffer to read a full block size on next iteration
-						buf.drain(0..block_size);
-						continue;
+						if added_instruction {
+							// A matched local block has been consumed; continue at the next block boundary.
+							buf.drain(0..block_size);
+							continue;
+						}
 					}
 				}
 			}
@@ -892,7 +932,7 @@ fn _create_zsync_info(
 	let file_name = file_path
 		.file_name()
 		.and_then(|name| name.to_str())
-		.ok_or_else(|| PyValueError::new_err("file path must have a valid UTF-8 file name"))?
+		.ok_or_else(|| PyValueError::new_err("File path must have a valid UTF-8 file name"))?
 		.to_string();
 	let zsync_file_info = ZsyncFileInfo {
 		zsync: ZSYNC_VERSION.to_string(),
@@ -936,10 +976,11 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
 	if zsync_file_path.is_file() {
 		remove_file(&zsync_file_path)?;
 	}
-	let mut file = OpenOptions::new()
+	let file = OpenOptions::new()
 		.create_new(true)
 		.write(true)
 		.open(zsync_file_path)?;
+	let mut file = BufWriter::with_capacity(IO_BUFFER_SIZE, file);
 	file.write_all(format!("zsync: {}\n", zsync_file_info.zsync.trim()).as_bytes())?;
 	if zsync_file_info.producer.trim() != "" {
 		file.write_all(format!("Producer: {}\n", zsync_file_info.producer.trim()).as_bytes())?;
@@ -1086,13 +1127,13 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 				zsync_file_info.checksum_bytes = val[2].parse()?;
 				if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
 					return Err(PyValueError::new_err(format!(
-						"seq_matches out of range: {}",
+						"Invalid value for seq_matches: {}",
 						zsync_file_info.seq_matches
 					)));
 				}
 				if zsync_file_info.rsum_bytes < 1 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
 					return Err(PyValueError::new_err(format!(
-						"rsum_bytes out of range: {}",
+						"Invalid value for rsum_bytes: {}",
 						zsync_file_info.rsum_bytes
 					)));
 				}
@@ -1100,7 +1141,7 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 					|| zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8
 				{
 					return Err(PyValueError::new_err(format!(
-						"checksum_bytes out of range: {}",
+						"Invalid value for checksum_bytes: {}",
 						zsync_file_info.checksum_bytes
 					)));
 				}
