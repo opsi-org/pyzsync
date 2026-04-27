@@ -43,7 +43,7 @@ jobs:
         run: uv run ruff check pyzsync tests
 
       - name: Run ty
-        run: uv run ty pyzsync tests
+        run: uv run ty check pyzsync tests
 
       - name: Run cargo test
         run: cargo test --no-default-features
