@@ -83,6 +83,7 @@ pylint-pytest:
   script:
     - export UV_PYTHON="3.13"
     - export UV_PYTHON_PREFERENCE="only-managed"
+    - opsi-dev-cli self upgrade
     - uv sync --frozen
     - uv run maturin develop --release
     - uv run ruff check pyzsync tests
