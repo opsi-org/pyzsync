@@ -80,21 +80,15 @@ pylint-pytest:
     - job: pytest-linux
       artifacts: true
   script:
-    - apt-get update
-    - apt-get --yes --allow-downgrades install libsqlite3-0=3.16.2-5+deb9u1
-    - apt-get --yes install sqlite3
     - export UV_PYTHON="3.13"
     - export UV_PYTHON_PREFERENCE="only-managed"
     - uv sync --frozen
     - uv run maturin develop --release
     - uv run ruff check pyzsync tests
     - uv run ty check pyzsync tests
-    - for db in coverage_*; do sqlite3 $db 'update file set path=replace(substr(path,instr(path,"pyzsync")),"\","/");'; done
-    - echo -e '[run]\nrelative_files = True\n' > .coveragerc
-    - uv run coverage combine coverage_*
-    - uv run coverage xml
-    - uv run coverage report
-    - uv run opsi-dev-tool -l info --testreport-merge testreport_*.xml testreport.xml
+    - opsi-dev-cli -l info testing merge-junit-testreports testreport_*.xml testreport.xml
+    - opsi-dev-cli -l info testing merge-coverage-files --base-path pyzsync coverage_* .coverage
+    - opsi-dev-cli -l info testing coverage-report --relative-files
   coverage: '/TOTAL\s+\d+\s+\d+\s+(\d+)%/'
   artifacts:
     name: "pyzsync_test"
