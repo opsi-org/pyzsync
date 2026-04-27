@@ -21,12 +21,6 @@ email = "info@uib.de"
 [tool.ruff]
 line-length = 140
 
-[tool.mypy]
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-follow_imports = "silent"
-
 [tool.ruff.format]
 indent-style = "tab"
 
