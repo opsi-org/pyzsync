@@ -3,6 +3,7 @@
 # License: AGPL-3.0
 
 import hashlib
+import os
 import platform
 import shutil
 import socket
@@ -168,10 +169,119 @@ def test_update_rsum(rsum_bytes: int, block_size: int) -> None:
 		assert _rsum & rsum_mask == new_rsum
 
 
+def test_update_rsum_wraps_on_underflow() -> None:
+	block_size = 2048
+	block = b"\xff" + (b"\x00" * (block_size - 1))
+	updated_block = block[1:] + b"\x00"
+
+	updated_rsum = update_rsum(rsum(block), block[0], updated_block[-1], block_size)
+
+	assert updated_rsum == rsum(updated_block)
+
+
+def test_update_rsum_rejects_invalid_block_size() -> None:
+	with pytest.raises(ValueError, match="Invalid block_size"):
+		update_rsum(0, 0, 0, 1024)
+
+
 def test_calc_block_size() -> None:
 	assert calc_block_size(1) == 2048
 	assert calc_block_size(1_000_000_000) == 4096
 	assert calc_block_size(2_000_000_000) == 4096
+
+
+def make_zsync_file_info(data_file: Path, *, rsum_bytes: int = 4, checksum_bytes: int = 16) -> ZsyncFileInfo:
+	data = data_file.read_bytes()
+	block_infos = calc_block_infos(data_file, 2048, rsum_bytes, checksum_bytes)
+	return ZsyncFileInfo(
+		zsync="0.6.2",
+		producer="pyzsync test",
+		filename=data_file.name,
+		url=data_file.name,
+		sha1=hashlib.sha1(data).digest(),
+		sha256=hashlib.sha256(data).digest(),
+		mtime=datetime.fromtimestamp(int(data_file.stat().st_mtime), tz=timezone.utc),
+		length=len(data),
+		block_size=2048,
+		seq_matches=1,
+		rsum_bytes=rsum_bytes,
+		checksum_bytes=checksum_bytes,
+		block_info=block_infos,
+	)
+
+
+def make_zsync_file_info_with_overrides(zsync_info: ZsyncFileInfo, **overrides: int) -> ZsyncFileInfo:
+	return ZsyncFileInfo(
+		zsync=zsync_info.zsync,
+		producer=zsync_info.producer,
+		filename=zsync_info.filename,
+		url=zsync_info.url,
+		sha1=zsync_info.sha1,
+		sha256=zsync_info.sha256,
+		mtime=zsync_info.mtime,
+		length=zsync_info.length,
+		block_size=overrides.get("block_size", zsync_info.block_size),
+		seq_matches=overrides.get("seq_matches", zsync_info.seq_matches),
+		rsum_bytes=overrides.get("rsum_bytes", zsync_info.rsum_bytes),
+		checksum_bytes=overrides.get("checksum_bytes", zsync_info.checksum_bytes),
+		block_info=zsync_info.block_info,
+	)
+
+
+def test_get_patch_instructions_supports_four_rsum_bytes(tmp_path: Path) -> None:
+	data_file = tmp_path / "data"
+	data_file.write_bytes(b"test data")
+	zsync_info = make_zsync_file_info(data_file, rsum_bytes=4)
+
+	instructions = get_patch_instructions(zsync_info, data_file)
+
+	assert instructions == [PatchInstruction(source=0, source_offset=0, target_offset=0, size=9)]
+
+
+@pytest.mark.parametrize(
+	"field, value, expected_error",
+	(
+		("seq_matches", 0, "seq_matches out of range"),
+		("seq_matches", 3, "seq_matches out of range"),
+		("rsum_bytes", 0, "rsum_bytes out of range"),
+		("rsum_bytes", 5, "rsum_bytes out of range"),
+		("checksum_bytes", 0, "checksum_bytes out of range"),
+		("checksum_bytes", 17, "checksum_bytes out of range"),
+		("block_size", 1024, "Invalid block_size"),
+	),
+)
+def test_get_patch_instructions_rejects_invalid_zsync_metadata(tmp_path: Path, field: str, value: int, expected_error: str) -> None:
+	data_file = tmp_path / "data"
+	data_file.write_bytes(b"test data")
+	zsync_info = make_zsync_file_info(data_file)
+	zsync_info = make_zsync_file_info_with_overrides(zsync_info, **{field: value})
+
+	with pytest.raises(ValueError, match=expected_error):
+		get_patch_instructions(zsync_info, data_file)
+
+
+def test_get_patch_instructions_rejects_too_many_source_files(tmp_path: Path) -> None:
+	data_file = tmp_path / "data"
+	data_file.write_bytes(b"test data")
+	zsync_info = make_zsync_file_info(data_file)
+	local_files: list[Path] = []
+	for idx in range(128):
+		local_file = tmp_path / f"local-{idx}"
+		local_file.write_bytes(b"different")
+		local_files.append(local_file)
+	local_files.append(data_file)
+
+	with pytest.raises(ValueError, match="too many source files"):
+		get_patch_instructions(zsync_info, local_files)
+
+
+def test_create_zsync_info_rejects_non_utf8_file_name(tmp_path: Path) -> None:
+	file_name = os.fsdecode(b"non-utf8-\xff")
+	data_file = tmp_path / file_name
+	data_file.write_bytes(b"test data")
+
+	with pytest.raises(ValueError, match="valid UTF-8 file name"):
+		create_zsync_info(data_file)
 
 
 def test_hash_speed(tmp_path: Path) -> None:

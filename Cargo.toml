@@ -11,10 +11,10 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono = "0.4.24"
 hex = "0.4.3"
-pyo3 = { version = "0.18.3", features = ["chrono"] }
+pyo3 = { version = "0.28.3", features = ["chrono"] }
 sha1 = "0.10.5"
 arrayref = "0.3.6"
-pyo3-log = "0.8.1"
+pyo3-log = "0.13.3"
 log = "0.4.18"
 sha2 = "0.10.6"
 

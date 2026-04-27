@@ -8,7 +8,8 @@ use log::{debug, info, warn};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
-use pyo3::{types::PyBytes, wrap_pyfunction};
+use pyo3::types::{PyBytes, PyModule};
+use pyo3::{wrap_pyfunction, Bound, Py};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use std::collections::{BTreeMap, HashSet};
@@ -71,8 +72,8 @@ impl BlockInfo {
 		Ok(self.rsum)
 	}
 	#[getter]
-	fn checksum(&self, py: Python<'_>) -> PyResult<PyObject> {
-		Ok(PyBytes::new(py, &self.checksum).into())
+	fn checksum(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+		Ok(PyBytes::new(py, &self.checksum).into_any().unbind())
 	}
 }
 
@@ -146,12 +147,12 @@ impl ZsyncFileInfo {
 		Ok(self.url.clone())
 	}
 	#[getter]
-	fn sha1(&self, py: Python<'_>) -> PyResult<PyObject> {
-		Ok(PyBytes::new(py, &self.sha1).into())
+	fn sha1(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+		Ok(PyBytes::new(py, &self.sha1).into_any().unbind())
 	}
 	#[getter]
-	fn sha256(&self, py: Python<'_>) -> PyResult<PyObject> {
-		Ok(PyBytes::new(py, &self.sha256).into())
+	fn sha256(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+		Ok(PyBytes::new(py, &self.sha256).into_any().unbind())
 	}
 	#[getter]
 	fn mtime(&self) -> PyResult<DateTime<Utc>> {
@@ -323,9 +324,9 @@ fn _md4(block: &[u8], num_bytes: u8) -> Result<[u8; CHECKSUM_SIZE], PyErr> {
 }
 
 #[pyfunction]
-fn rs_md4(block: &PyBytes, num_bytes: u8, py: Python<'_>) -> PyResult<PyObject> {
+fn rs_md4(block: &Bound<'_, PyBytes>, num_bytes: u8, py: Python<'_>) -> PyResult<Py<PyAny>> {
 	let res = _md4(block.as_bytes().to_vec().as_ref(), num_bytes)?;
-	Ok(PyBytes::new(py, &res).into())
+	Ok(PyBytes::new(py, &res).into_any().unbind())
 }
 
 /// Get the rsum of a block
@@ -358,28 +359,35 @@ fn _rsum(block: &[u8], num_bytes: u8) -> Result<u32, PyErr> {
 }
 
 #[pyfunction]
-fn rs_rsum(block: &PyBytes, num_bytes: u8) -> PyResult<u32> {
+fn rs_rsum(block: &Bound<'_, PyBytes>, num_bytes: u8) -> PyResult<u32> {
 	let res = _rsum(block.as_bytes().to_vec().as_ref(), num_bytes)?;
 	Ok(res)
 }
 
-fn _update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> u32 {
+fn _update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> PyResult<u32> {
+	if block_size != 2048 && block_size != 4096 {
+		return Err(PyValueError::new_err(format!(
+			"Invalid block_size: {}",
+			block_size
+		)));
+	}
 	// 1 << block_shift = block_size
 	let block_shift = if block_size == 2048 { 11 } else { 12 };
 	let old_char_u16 = u16::from(old_char);
 	let new_char_u16 = u16::from(new_char);
 	let mut a: u16 = ((rsum & 0xffff0000) >> 16) as u16;
 	let mut b: u16 = rsum as u16;
-	a += new_char_u16 - old_char_u16;
-	b += a - (old_char_u16 << block_shift);
+	a = a.wrapping_add(new_char_u16).wrapping_sub(old_char_u16);
+	b = b
+		.wrapping_add(a)
+		.wrapping_sub(old_char_u16.wrapping_shl(block_shift));
 	let res: u32 = ((a as u32) << 16) + b as u32;
-	res
+	Ok(res)
 }
 
 #[pyfunction]
 fn rs_update_rsum(rsum: u32, old_char: u8, new_char: u8, block_size: u16) -> PyResult<u32> {
-	let res = _update_rsum(rsum, old_char, new_char, block_size);
-	Ok(res)
+	_update_rsum(rsum, old_char, new_char, block_size)
 }
 
 #[pyfunction]
@@ -520,15 +528,43 @@ fn rs_get_patch_instructions(
 	let seq_matches = zsync_file_info.seq_matches > 1;
 	let checksum_bytes = zsync_file_info.checksum_bytes as usize;
 	let block_size = zsync_file_info.block_size as usize;
+	if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
+		return Err(PyValueError::new_err(format!(
+			"seq_matches out of range: {}",
+			zsync_file_info.seq_matches
+		)));
+	}
+	if zsync_file_info.rsum_bytes == 0 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
+		return Err(PyValueError::new_err(format!(
+			"rsum_bytes out of range: {}",
+			zsync_file_info.rsum_bytes
+		)));
+	}
+	if zsync_file_info.checksum_bytes == 0 || zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8 {
+		return Err(PyValueError::new_err(format!(
+			"checksum_bytes out of range: {}",
+			zsync_file_info.checksum_bytes
+		)));
+	}
+	if zsync_file_info.block_size != 2048 && zsync_file_info.block_size != 4096 {
+		return Err(PyValueError::new_err(format!(
+			"Invalid block_size: {}",
+			zsync_file_info.block_size
+		)));
+	}
 
 	// There are 2 ** (rsum_bytes * 8) possible rsum hashes.
-	let max_rsum_hashes = 2 << (zsync_file_info.rsum_bytes * 8 - 1);
-	let rsum_mask: u32 = max_rsum_hashes - 1;
+	let rsum_bits = zsync_file_info.rsum_bytes * 8;
+	let rsum_mask: u32 = if rsum_bits == 32 {
+		u32::MAX
+	} else {
+		(1u32 << rsum_bits) - 1
+	};
 
-	// The rsum_list is used for fast negative checking.
-	// If the value of the vector at index <rsum> is 0,
+	// The rsum_set is used for fast negative checking.
+	// If the set does not contain <rsum>,
 	// the hash does not exist in the block info.
-	let mut rsum_list = vec![0u8; max_rsum_hashes as usize];
+	let mut rsum_set: HashSet<u32> = HashSet::new();
 
 	// Arrange all blocks from the zsync file info in a map:
 	// <block-rsum> => <block-md4> => <list of matching blocks>
@@ -537,13 +573,13 @@ fn rs_get_patch_instructions(
 
 	for idx in 0..zsync_file_info.block_info.len() {
 		let block_info = &zsync_file_info.block_info[idx];
-		let mut hash = block_info.rsum;
+		let mut hash = block_info.rsum & rsum_mask;
 
-		rsum_list[hash as usize] = 1;
+		rsum_set.insert(hash);
 		if seq_matches && idx + 1 < zsync_file_info.block_info.len() {
 			// Combine rsum and rsum of following block
 			let next_block_info = &zsync_file_info.block_info[idx + 1];
-			hash ^= next_block_info.rsum << 16;
+			hash ^= (next_block_info.rsum & rsum_mask) << 16;
 		}
 
 		sum_block_size += block_info.size as u64;
@@ -644,9 +680,9 @@ fn rs_get_patch_instructions(
 			if add_chars == 1 {
 				// Only one char added, update the rolling checksum
 				let char = buf[block_size - 1];
-				rsum = _update_rsum(rsum, removed_char, char, block_size as u16);
+				rsum = _update_rsum(rsum, removed_char, char, block_size as u16)?;
 				if seq_matches {
-					next_rsum = _update_rsum(next_rsum, char, added_char, block_size as u16);
+					next_rsum = _update_rsum(next_rsum, char, added_char, block_size as u16)?;
 				}
 			} else {
 				// More than one char added to buffer, calculate new rsum
@@ -667,11 +703,11 @@ fn rs_get_patch_instructions(
 
 			// First look into the rsum_list (fast negative check)
 			rsum_list_lookups += 1;
-			if rsum_list[hash as usize] != 0 {
+			if rsum_set.contains(&hash) {
 				if seq_matches {
 					let next_hash = next_rsum & rsum_mask;
 					hash ^= next_hash << 16;
-					if rsum_list[next_hash as usize] != 0 {
+					if rsum_set.contains(&next_hash) {
 						rsum_list_match = true;
 					}
 				} else {
@@ -698,8 +734,13 @@ fn rs_get_patch_instructions(
 								// Check if block ID was already handled in the instructions.
 								if !block_ids_found.contains(&block_info.block_id) {
 									// Add current file offsets to instructions
+									let source = i8::try_from(file_id).map_err(|_| {
+										PyValueError::new_err(
+											"too many source files; maximum supported is 127",
+										)
+									})?;
 									patch_instructions.push(PatchInstruction {
-										source: file_id as i8,
+										source,
 										source_offset: pos - buffer_size as u64,
 										target_offset: block_info.offset,
 										size: block_info.size as u64,
@@ -851,6 +892,11 @@ fn _create_zsync_info(
 		checksum_bytes,
 		progress_callback,
 	)?;
+	let file_name = file_path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or_else(|| PyValueError::new_err("file path must have a valid UTF-8 file name"))?
+		.to_string();
 	let zsync_file_info = ZsyncFileInfo {
 		zsync: ZSYNC_VERSION.to_string(),
 		producer: if legacy_mode {
@@ -858,8 +904,8 @@ fn _create_zsync_info(
 		} else {
 			format!("{} {}", PRODUCER_NAME, PYZSYNC_VERSION)
 		},
-		filename: file_path.file_name().unwrap().to_str().unwrap().to_string(),
-		url: file_path.file_name().unwrap().to_str().unwrap().to_string(),
+		filename: file_name.clone(),
+		url: file_name,
 		sha1: sha1_digest,
 		sha256: if legacy_mode {
 			[0u8; 32]
@@ -1043,13 +1089,13 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 				zsync_file_info.checksum_bytes = val[2].parse()?;
 				if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
 					return Err(PyValueError::new_err(format!(
-						"seq_matches out of range: {}",
+						"Invalid seq_matches value: {}",
 						zsync_file_info.seq_matches
 					)));
 				}
 				if zsync_file_info.rsum_bytes < 1 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
 					return Err(PyValueError::new_err(format!(
-						"rsum_bytes out of range: {}",
+						"Invalid rsum_bytes value: {}",
 						zsync_file_info.rsum_bytes
 					)));
 				}
@@ -1057,7 +1103,7 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 					|| zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8
 				{
 					return Err(PyValueError::new_err(format!(
-						"checksum_bytes out of range: {}",
+						"Invalid checksum_bytes value: {}",
 						zsync_file_info.checksum_bytes
 					)));
 				}
