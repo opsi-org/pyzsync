@@ -441,7 +441,7 @@ fn _calc_block_infos(
 	let mut sha256 = Sha256::new();
 	let file = File::open(file_path)?;
 	let size = file_path.metadata()?.len();
-	let block_count: u64 = (size + u64::from(block_size) - 1) / u64::from(block_size);
+	let block_count: u64 = size.div_ceil(u64::from(block_size));
 	let mut block_infos: Vec<BlockInfo> = Vec::new();
 	let mut reader = BufReader::new(file);
 
@@ -861,12 +861,7 @@ fn _create_zsync_info(
 		/ (seq_matches as f64)
 		/ 8.0_f64)
 		.ceil() as u8;
-	if rsum_bytes > 4 {
-		rsum_bytes = 4;
-	}
-	if rsum_bytes < 2 {
-		rsum_bytes = 2;
-	}
+	rsum_bytes = rsum_bytes.clamp(2, 4);
 
 	let mut checksum_bytes = ((20.0_f64
 		+ ((size as f64).ln() + (1.0_f64 + (size as f64) / (block_size as f64)).ln())
@@ -970,7 +965,7 @@ fn _write_zsync_file(zsync_file_info: ZsyncFileInfo, zsync_file_path: PathBuf) -
 		// Write trailing rsum_bytes of the rsum
 		let buf: [u8; 4] = [
 			((block_info.rsum >> 24) & 0xff) as u8,
-			(block_info.rsum >> 16 & 0xff) as u8,
+			((block_info.rsum >> 16) & 0xff) as u8,
 			((block_info.rsum >> 8) & 0xff) as u8,
 			(block_info.rsum & 0xff) as u8,
 		];
@@ -1113,15 +1108,18 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 		}
 	}
 
-	let block_count: u64 = (zsync_file_info.length + u64::from(zsync_file_info.block_size) - 1)
-		/ u64::from(zsync_file_info.block_size);
+	let block_count: u64 = zsync_file_info
+		.length
+		.div_ceil(u64::from(zsync_file_info.block_size));
 	for block_id in 0..block_count {
 		let mut buf = vec![0u8; zsync_file_info.rsum_bytes as usize];
 		reader.read_exact(&mut buf)?;
 		buf.resize(RSUM_SIZE, 0u8);
 		buf.rotate_right(RSUM_SIZE - zsync_file_info.rsum_bytes as usize);
-		let rsum: u32 =
-			(buf[0] as u32) << 24 | (buf[1] as u32) << 16 | (buf[2] as u32) << 8 | (buf[3] as u32);
+		let rsum: u32 = ((buf[0] as u32) << 24)
+			| ((buf[1] as u32) << 16)
+			| ((buf[2] as u32) << 8)
+			| (buf[3] as u32);
 
 		let mut checksum = vec![0u8; zsync_file_info.checksum_bytes as usize];
 		reader.read_exact(&mut checksum)?;

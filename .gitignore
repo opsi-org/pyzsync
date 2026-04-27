@@ -1,3 +1,5 @@
 __pycache__
 pyzsync.*.so
 /target
+/*.opsi
+/*.zsync
