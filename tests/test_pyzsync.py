@@ -275,7 +275,7 @@ def test_get_patch_instructions_rejects_too_many_source_files(tmp_path: Path) ->
 		get_patch_instructions(zsync_info, local_files)
 
 
-@pytest.mark.posix
+@pytest.mark.linux
 def test_create_zsync_info_rejects_non_utf8_file_name(tmp_path: Path) -> None:
 	file_name = os.fsdecode(b"non-utf8-\xff")
 	data_file = tmp_path / file_name
