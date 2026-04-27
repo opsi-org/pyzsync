@@ -18,6 +18,10 @@ pyo3-log = "0.13.3"
 sha1 = "0.11.0"
 sha2 = "0.11.0"
 
+[build-dependencies]
+pyo3-build-config = { version = "0.28.3", features = ["resolve-config"] }
+
 [features]
 # We must make this feature optional to build binaries such as the profiling crate
-default = ["pyo3/extension-module"]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
