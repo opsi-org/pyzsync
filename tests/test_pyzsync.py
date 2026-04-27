@@ -180,7 +180,7 @@ def test_update_rsum_wraps_on_underflow() -> None:
 
 
 def test_update_rsum_rejects_invalid_block_size() -> None:
-	with pytest.raises(ValueError, match="Invalid block_size"):
+	with pytest.raises(ValueError, match="Invalid value for block_size: 1024"):
 		update_rsum(0, 0, 0, 1024)
 
 
@@ -241,13 +241,13 @@ def test_get_patch_instructions_supports_four_rsum_bytes(tmp_path: Path) -> None
 @pytest.mark.parametrize(
 	"field, value, expected_error",
 	(
-		("seq_matches", 0, "seq_matches out of range"),
-		("seq_matches", 3, "seq_matches out of range"),
-		("rsum_bytes", 0, "rsum_bytes out of range"),
-		("rsum_bytes", 5, "rsum_bytes out of range"),
-		("checksum_bytes", 0, "checksum_bytes out of range"),
-		("checksum_bytes", 17, "checksum_bytes out of range"),
-		("block_size", 1024, "Invalid block_size"),
+		("seq_matches", 0, "Invalid value for seq_matches: 0"),
+		("seq_matches", 3, "Invalid value for seq_matches: 3"),
+		("rsum_bytes", 0, "Invalid value for rsum_bytes: 0"),
+		("rsum_bytes", 5, "Invalid value for rsum_bytes: 5"),
+		("checksum_bytes", 0, "Invalid value for checksum_bytes: 0"),
+		("checksum_bytes", 17, "Invalid value for checksum_bytes: 17"),
+		("block_size", 1024, "Invalid value for block_size: 1024"),
 	),
 )
 def test_get_patch_instructions_rejects_invalid_zsync_metadata(tmp_path: Path, field: str, value: int, expected_error: str) -> None:
@@ -271,7 +271,7 @@ def test_get_patch_instructions_rejects_too_many_source_files(tmp_path: Path) ->
 		local_files.append(local_file)
 	local_files.append(data_file)
 
-	with pytest.raises(ValueError, match="too many source files"):
+	with pytest.raises(ValueError, match="Too many source files, maximum supported is 127"):
 		get_patch_instructions(zsync_info, local_files)
 
 

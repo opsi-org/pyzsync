@@ -625,7 +625,7 @@ fn rs_get_patch_instructions(
 		}
 
 		let source = i8::try_from(file_id).map_err(|_| {
-			PyValueError::new_err("Too many source files; maximum supported is 127")
+			PyValueError::new_err("Too many source files, maximum supported is 127")
 		})?;
 
 		info!("Processing file #{}: {:?}", file_id, file_path);
