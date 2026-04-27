@@ -9,7 +9,7 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::types::{PyBytes, PyModule};
-use pyo3::{wrap_pyfunction, Bound, Py};
+use pyo3::{wrap_pyfunction, Bound, IntoPyObjectExt, Py};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use std::collections::{BTreeMap, HashSet};
@@ -28,7 +28,7 @@ const PRODUCER_NAME: &str = "pyzsync";
 const SOURCE_REMOTE: i8 = -1;
 
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 struct BlockInfo {
 	block_id: u64,
 	offset: u64,
@@ -78,7 +78,7 @@ impl BlockInfo {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 struct ZsyncFileInfo {
 	zsync: String,
 	producer: String,
@@ -190,7 +190,7 @@ impl ZsyncFileInfo {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 struct PatchInstruction {
 	source: i8,
 	source_offset: u64,
@@ -265,12 +265,14 @@ impl PatchInstruction {
 				&& self.source_offset == other.source_offset
 				&& self.target_offset == other.target_offset
 				&& self.size == other.size)
-				.into_py(py),
+				.into_py_any(py)
+				.unwrap(),
 			CompareOp::Ne => (self.source != other.source
 				|| self.source_offset != other.source_offset
 				|| self.target_offset != other.target_offset
 				|| self.size != other.size)
-				.into_py(py),
+				.into_py_any(py)
+				.unwrap(),
 			_ => py.NotImplemented(),
 		}
 	}
@@ -406,7 +408,7 @@ fn _calc_block_infos(
 	block_size: u16,
 	mut rsum_bytes: u8,
 	mut checksum_bytes: u8,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> Result<(Vec<BlockInfo>, [u8; 20], [u8; 32]), PyErr> {
 	if block_size != 2048 && block_size != 4096 {
 		return Err(PyValueError::new_err(format!(
@@ -480,10 +482,10 @@ fn _calc_block_infos(
 		};
 		block_infos.push(block_info);
 		if !progress_callback.is_none(py) {
-			let abort: PyObject = progress_callback
+			let abort: Py<PyAny> = progress_callback
 				.call(py, (block_id + 1, block_count), None)?
 				.extract(py)?;
-			if abort.is_true(py)? {
+			if abort.is_truthy(py)? {
 				return Err(PyRuntimeError::new_err("Aborted by progress callback"));
 			}
 		}
@@ -500,7 +502,7 @@ fn rs_calc_block_infos(
 	block_size: u16,
 	rsum_bytes: u8,
 	checksum_bytes: u8,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> PyResult<Vec<BlockInfo>> {
 	let result = _calc_block_infos(
 		py,
@@ -518,7 +520,7 @@ fn rs_get_patch_instructions(
 	py: Python<'_>,
 	zsync_file_info: ZsyncFileInfo,
 	file_paths: Vec<PathBuf>,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> PyResult<Vec<PatchInstruction>> {
 	// Get a list of instructions, based on the zsync file info,
 	// to build the remote file, using as much as possible data from the local file.
@@ -648,10 +650,10 @@ fn rs_get_patch_instructions(
 					checksum_matches
 				);
 				if !progress_callback.is_none(py) {
-					let abort: PyObject = progress_callback
+					let abort: Py<PyAny> = progress_callback
 						.call(py, (pos, end_pos), None)?
 						.extract(py)?;
-					if abort.is_true(py)? {
+					if abort.is_truthy(py)? {
 						return Err(PyRuntimeError::new_err("Aborted by progress callback"));
 					}
 				}
@@ -845,7 +847,7 @@ fn _create_zsync_info(
 	py: Python<'_>,
 	file_path: PathBuf,
 	legacy_mode: bool,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> Result<ZsyncFileInfo, PyErr> {
 	let metadata = file_path.metadata()?;
 	let size = metadata.len();
@@ -928,7 +930,7 @@ fn rs_create_zsync_info(
 	py: Python<'_>,
 	file_path: PathBuf,
 	legacy_mode: bool,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> PyResult<ZsyncFileInfo> {
 	let zsync_file_info = _create_zsync_info(py, file_path, legacy_mode, progress_callback)?;
 	Ok(zsync_file_info)
@@ -986,7 +988,7 @@ fn rs_create_zsync_file(
 	file_path: PathBuf,
 	zsync_file_path: PathBuf,
 	legacy_mode: bool,
-	progress_callback: PyObject,
+	progress_callback: Py<PyAny>,
 ) -> PyResult<()> {
 	let zsync_file_info = _create_zsync_info(py, file_path, legacy_mode, progress_callback)?;
 	_write_zsync_file(zsync_file_info, zsync_file_path)?;
@@ -1089,13 +1091,13 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 				zsync_file_info.checksum_bytes = val[2].parse()?;
 				if zsync_file_info.seq_matches < 1 || zsync_file_info.seq_matches > 2 {
 					return Err(PyValueError::new_err(format!(
-						"Invalid seq_matches value: {}",
+						"seq_matches out of range: {}",
 						zsync_file_info.seq_matches
 					)));
 				}
 				if zsync_file_info.rsum_bytes < 1 || zsync_file_info.rsum_bytes > RSUM_SIZE as u8 {
 					return Err(PyValueError::new_err(format!(
-						"Invalid rsum_bytes value: {}",
+						"rsum_bytes out of range: {}",
 						zsync_file_info.rsum_bytes
 					)));
 				}
@@ -1103,7 +1105,7 @@ fn _read_zsync_file(zsync_file_path: PathBuf) -> Result<ZsyncFileInfo, PyErr> {
 					|| zsync_file_info.checksum_bytes > CHECKSUM_SIZE as u8
 				{
 					return Err(PyValueError::new_err(format!(
-						"Invalid checksum_bytes value: {}",
+						"checksum_bytes out of range: {}",
 						zsync_file_info.checksum_bytes
 					)));
 				}
@@ -1148,8 +1150,8 @@ fn rs_read_zsync_file(zsync_file_path: PathBuf) -> PyResult<ZsyncFileInfo> {
 }
 
 /// A Python module implemented in Rust.
-#[pymodule]
-fn pyzsync(_py: Python, m: &PyModule) -> PyResult<()> {
+#[pymodule(gil_used = false)]
+fn pyzsync(m: &Bound<'_, PyModule>) -> PyResult<()> {
 	pyo3_log::init();
 
 	m.add_class::<BlockInfo>()?;
