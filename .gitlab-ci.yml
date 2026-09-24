@@ -307,3 +307,53 @@ uibpypi-linux-py314t-arm64:
     - uv run maturin publish --repository-url https://pypi.uib.gmbh/
   only:
     - tags
+
+# Python 3.15
+uibpypi-linux-py315-x64:
+  stage: publish
+  script:
+    - export UV_PYTHON="3.15"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+uibpypi-linux-py315-arm64:
+  stage: publish
+  tags:
+    - docker-arm64
+  script:
+    - export UV_PYTHON="3.15"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+# Python 3.15 free threading
+uibpypi-linux-py315t-x64:
+  stage: publish
+  script:
+    - export UV_PYTHON="3.15t"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags
+
+uibpypi-linux-py315t-arm64:
+  stage: publish
+  tags:
+    - docker-arm64
+  script:
+    - export UV_PYTHON="3.15t"
+    - export UV_PYTHON_PREFERENCE="only-managed"
+    - uv sync --frozen
+    - uv run maturin build --release
+    - uv run maturin publish --repository-url https://pypi.uib.gmbh/
+  only:
+    - tags

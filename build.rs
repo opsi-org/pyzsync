@@ -10,11 +10,11 @@ fn main() {
 	}
 
 	let config = pyo3_build_config::get();
-	if !config.shared {
+	if !config.shared() {
 		return;
 	};
 
-	let Some(libdir) = config.lib_dir.as_deref() else {
+	let Some(libdir) = config.lib_dir() else {
 		return;
 	};
 
